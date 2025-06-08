@@ -6,7 +6,8 @@
 
 - **정책 비교**: 방화벽 정책과 객체의 변경사항을 비교하고 분석
 - **다중 벤더 지원**: PaloAlto, NGF, MF2 등 다양한 방화벽 벤더 지원
-- **정책 분석**: 중복성, 변경사항, 사용현황 분석
+- **정책 분석**: 중복성, 변경사항, 사용현황, Shadow 정책 분석
+- **정책 필터링**: IP 주소, CIDR, 범위 기반 정책 검색
 - **삭제 시나리오**: 정책 삭제 영향도 분석 및 처리
 
 ## 📦 설치
@@ -71,20 +72,44 @@ objects = firewall.export_network_objects()
 ### 3. 정책 분석
 
 ```python
-from hoon_firewall_modules import PolicyAnalyzer
+from modules.analysis_module import PolicyAnalyzer, RedundancyAnalyzer, ShadowAnalyzer, PolicyFilter
 import pandas as pd
-
-# 분석기 초기화
-analyzer = PolicyAnalyzer()
 
 # 정책 데이터 로드
 df = pd.read_excel("policies.xlsx")
 
 # 중복 정책 분석
-result = analyzer.analyze_redundancy(
-    df=df,
-    vendor="paloalto", 
-    output_file="redundancy_analysis.xlsx"
+redundancy_analyzer = RedundancyAnalyzer()
+redundancy_result = redundancy_analyzer.analyze(df, vendor="paloalto")
+
+# Shadow 정책 분석
+shadow_analyzer = ShadowAnalyzer()
+shadow_result = shadow_analyzer.analyze(df, vendor="paloalto")
+
+# 정책 필터링 (IP 주소 기반)
+policy_filter = PolicyFilter()
+
+# Source 주소로 필터링
+filtered_policies = policy_filter.filter_by_source(
+    df, 
+    search_address="192.168.1.0/24",
+    include_any=True
+)
+
+# Destination 주소로 필터링
+filtered_policies = policy_filter.filter_by_destination(
+    df,
+    search_address="10.0.0.0/8", 
+    include_any=False
+)
+
+# 복합 조건 필터링
+filtered_policies = policy_filter.filter_by_criteria(
+    df,
+    source_address="192.168.1.0/24",
+    destination_address="10.0.0.0/8",
+    match_mode="AND",
+    include_any=True
 )
 ```
 
@@ -93,7 +118,12 @@ result = analyzer.analyze_redundancy(
 ```python
 # 기본 사용법 (권장)
 from modules.policy_comparator import PolicyComparator
-from modules.analysis_module import PolicyAnalyzer, RedundancyAnalyzer
+from modules.analysis_module import (
+    PolicyAnalyzer, 
+    RedundancyAnalyzer, 
+    ShadowAnalyzer, 
+    PolicyFilter
+)
 from modules.firewall_module import FirewallInterface
 
 # 고급 기능 (개별 import)
@@ -101,7 +131,91 @@ from modules.firewall_module.collector_factory import FirewallCollectorFactory
 from modules.delete_scenario.processors import policy_usage_processor
 ```
 
-### 5. 고급 사용법
+### 5. 정책 필터링 상세 사용법
+
+```python
+from modules.analysis_module import PolicyFilter
+import pandas as pd
+
+# PolicyFilter 인스턴스 생성
+filter_obj = PolicyFilter()
+
+# 정책 데이터 로드
+df = pd.read_excel("firewall_policies.xlsx")
+
+# 1. Source 주소 기반 필터링
+# CIDR 검색
+source_filtered = filter_obj.filter_by_source(
+    df, 
+    search_address="192.168.1.0/24",
+    include_any=True,      # any 정책 포함 여부
+    use_extracted=True     # Extracted Source 컬럼 사용 여부
+)
+
+# IP 범위 검색
+source_filtered = filter_obj.filter_by_source(
+    df, 
+    search_address="192.168.1.1-192.168.1.100",
+    include_any=False
+)
+
+# 단일 IP 검색
+source_filtered = filter_obj.filter_by_source(
+    df, 
+    search_address="192.168.1.100",
+    include_any=False
+)
+
+# 2. Destination 주소 기반 필터링
+dest_filtered = filter_obj.filter_by_destination(
+    df,
+    search_address="10.0.0.0/8",
+    include_any=False
+)
+
+# 3. Source 또는 Destination 모두 검색
+both_filtered = filter_obj.filter_by_both(
+    df,
+    search_address="192.168.1.0/24",
+    include_any=True
+)
+
+# 4. 복합 조건 필터링
+# AND 모드: Source와 Destination 모두 만족
+and_filtered = filter_obj.filter_by_criteria(
+    df,
+    source_address="192.168.1.0/24",
+    destination_address="10.0.0.0/8", 
+    match_mode="AND",
+    include_any=True
+)
+
+# OR 모드: Source 또는 Destination 중 하나만 만족
+or_filtered = filter_obj.filter_by_criteria(
+    df,
+    source_address="192.168.1.0/24",
+    destination_address="10.0.0.0/8",
+    match_mode="OR", 
+    include_any=False
+)
+
+# 5. 필터링 결과 요약
+summary = filter_obj.get_filter_summary(
+    original_df=df,
+    filtered_df=source_filtered,
+    search_criteria={
+        'search_type': 'source',
+        'address': '192.168.1.0/24',
+        'include_any': True
+    }
+)
+
+print(f"총 정책 수: {summary['total_policies']}")
+print(f"매치된 정책 수: {summary['matched_policies']}")
+print(f"매치 비율: {summary['match_percentage']:.1f}%")
+```
+
+### 6. 고급 사용법
 
 ```python
 # 방화벽 컬렉터 팩토리 사용 (복잡한 의존성)
@@ -155,6 +269,13 @@ MIT License - 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
 - GitHub: [@hunseop](https://github.com/hunseop)
 
 ## 🆕 변경 사항
+
+### v1.1.0
+- **PolicyFilter** 추가: IP 주소, CIDR, 범위 기반 정책 필터링 기능
+- **ShadowAnalyzer** 추가: Shadow 정책 분석 기능
+- 정책 관리 필터링 기능 강화
+- 복합 조건 검색 지원 (AND/OR 모드)
+- any 포함 여부 설정 가능
 
 ### v1.0.0
 - 초기 릴리스

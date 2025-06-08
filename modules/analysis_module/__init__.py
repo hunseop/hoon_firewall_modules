@@ -8,5 +8,6 @@ from .core.redundancy_analyzer import RedundancyAnalyzer
 from .core.change_analyzer import ChangeAnalyzer
 from .core.policy_resolver import PolicyResolver
 from .core.shadow_analyzer import ShadowAnalyzer
+from .core.policy_filter import PolicyFilter
 
-__all__ = ['PolicyAnalyzer', 'RedundancyAnalyzer', 'ChangeAnalyzer', 'PolicyResolver', 'ShadowAnalyzer']
+__all__ = ['PolicyAnalyzer', 'RedundancyAnalyzer', 'ChangeAnalyzer', 'PolicyResolver', 'ShadowAnalyzer', 'PolicyFilter']
