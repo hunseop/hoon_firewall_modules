@@ -11,12 +11,62 @@
 - 방화벽 추상 인터페이스 (FirewallInterface)
 - 벤더별 컬렉터 팩토리 (CollectorFactory)
 - 데이터 익스포터 (Exporter)
+- 로깅 및 예외 처리 시스템
+- 입력 검증 및 성능 최적화
 """
 
+# 핵심 클래스
 from .firewall_interface import FirewallInterface
+from .collector_factory import FirewallCollectorFactory
 from .exporter import export_policy_to_excel
 
-# collector_factory는 복잡한 의존성이 있어서 개별 import 권장
-# from .collector_factory import FirewallCollectorFactory
+# 예외 클래스
+from .exceptions import (
+    FirewallError,
+    FirewallConnectionError,
+    FirewallAuthenticationError,
+    FirewallTimeoutError,
+    FirewallAPIError,
+    FirewallConfigurationError,
+    FirewallDataError,
+    FirewallUnsupportedError
+)
 
-__all__ = ['FirewallInterface', 'export_policy_to_excel']
+# 유틸리티
+from .validators import FirewallValidator
+from .utils import (
+    setup_firewall_logger,
+    retry_on_failure,
+    performance_monitor,
+    ProgressTracker
+)
+
+# 버전 정보
+__version__ = "1.2.0"
+
+__all__ = [
+    # 핵심 클래스
+    'FirewallInterface',
+    'FirewallCollectorFactory', 
+    'export_policy_to_excel',
+    
+    # 예외 클래스
+    'FirewallError',
+    'FirewallConnectionError',
+    'FirewallAuthenticationError',
+    'FirewallTimeoutError',
+    'FirewallAPIError',
+    'FirewallConfigurationError',
+    'FirewallDataError',
+    'FirewallUnsupportedError',
+    
+    # 유틸리티
+    'FirewallValidator',
+    'setup_firewall_logger',
+    'retry_on_failure',
+    'performance_monitor',
+    'ProgressTracker',
+    
+    # 버전
+    '__version__'
+]
