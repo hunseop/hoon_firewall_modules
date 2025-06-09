@@ -11,7 +11,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from modules.analysis_module import PolicyFilter
+    from modules.firewall_analyzer import PolicyFilter
     print("✅ PolicyFilter import 성공")
 except ImportError as e:
     print(f"❌ PolicyFilter import 실패: {e}")

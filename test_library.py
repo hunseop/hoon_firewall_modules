@@ -22,14 +22,14 @@ def test_imports():
         print("3. 모듈별 import 테스트...")
         import modules.policy_comparator as policy_comparator
         import modules.firewall_module as firewall_module  
-        import modules.analysis_module as analysis_module
-        import modules.delete_scenario as delete_scenario
+        import modules.firewall_analyzer as firewall_analyzer
+        import modules.policy_deletion_processor as policy_deletion_processor
         print("   ✅ 모든 서브모듈 import 성공")
         
         # 개별 모듈 클래스 테스트
         print("4. 개별 모듈 클래스 테스트...")
         from modules.policy_comparator import PolicyComparator
-        from modules.analysis_module import RedundancyAnalyzer
+        from modules.firewall_analyzer import RedundancyAnalyzer
         print("   ✅ 개별 모듈 클래스 import 성공")
         
         return True
@@ -53,7 +53,7 @@ def test_basic_functionality():
         print("   ✅ PolicyComparator 인스턴스 생성 성공")
         
         # PolicyAnalyzer 인스턴스 생성 테스트
-        from modules.analysis_module import PolicyAnalyzer
+        from modules.firewall_analyzer import PolicyAnalyzer
         analyzer = PolicyAnalyzer()
         print("   ✅ PolicyAnalyzer 인스턴스 생성 성공")
         
@@ -88,7 +88,7 @@ def main():
         print("\n📚 사용법:")
         print("   # 현재 디렉토리에서:")
         print("   from modules.policy_comparator import PolicyComparator")
-        print("   from modules.analysis_module import PolicyAnalyzer")
+        print("   from modules.firewall_analyzer import PolicyAnalyzer")
         print("   from modules.firewall_module import FirewallInterface")
         return 0
     else:

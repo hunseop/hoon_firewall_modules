@@ -11,7 +11,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from modules.analysis_module import ShadowAnalyzer
+    from modules.firewall_analyzer import ShadowAnalyzer
     print("✅ ShadowAnalyzer import 성공")
 except ImportError as e:
     print(f"❌ ShadowAnalyzer import 실패: {e}")
@@ -93,12 +93,12 @@ def test_shadow_analyzer():
         return False
 
 def test_import_all():
-    """모든 analysis_module 클래스 import 테스트"""
+    """모든 firewall_analyzer 클래스 import 테스트"""
     
     print("\n=== Analysis Module Import 테스트 ===")
     
     try:
-        from modules.analysis_module import (
+        from modules.firewall_analyzer import (
             PolicyAnalyzer, 
             RedundancyAnalyzer, 
             ChangeAnalyzer, 

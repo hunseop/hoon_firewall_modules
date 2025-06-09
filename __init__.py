@@ -18,7 +18,7 @@ try:
     from modules.policy_comparator.excel_formatter import save_results_to_excel
     from modules.firewall_module.firewall_interface import FirewallInterface
     from modules.firewall_module.exporter import export_policy_to_excel
-    from modules.analysis_module import PolicyAnalyzer, RedundancyAnalyzer, ChangeAnalyzer, PolicyResolver
+    from modules.firewall_analyzer import PolicyAnalyzer, RedundancyAnalyzer, ChangeAnalyzer, PolicyResolver
     
     # 각 모듈별로 네임스페이스 제공
     import modules
@@ -28,7 +28,7 @@ except ImportError:
     from .modules.policy_comparator.excel_formatter import save_results_to_excel
     from .modules.firewall_module.firewall_interface import FirewallInterface
     from .modules.firewall_module.exporter import export_policy_to_excel
-    from .modules.analysis_module import PolicyAnalyzer, RedundancyAnalyzer, ChangeAnalyzer, PolicyResolver
+    from .modules.firewall_analyzer import PolicyAnalyzer, RedundancyAnalyzer, ChangeAnalyzer, PolicyResolver
     
     # 각 모듈별로 네임스페이스 제공
     from . import modules

@@ -8,9 +8,9 @@
 
 사용법:
     # 개별 모듈 import
-    from modules.delete_scenario.core import config_manager
-    from modules.delete_scenario.processors import policy_usage_processor
-    from modules.delete_scenario.utils import excel_manager
+    from modules.policy_deletion_processor.core import config_manager
+    from modules.policy_deletion_processor.processors import policy_usage_processor
+    from modules.policy_deletion_processor.utils import excel_manager
 """
 
 # 복잡한 의존성으로 인해 개별 import 권장

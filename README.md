@@ -14,12 +14,12 @@
 
 ### GitHub에서 직접 설치
 ```bash
-pip install git+https://github.com/yourusername/hoon-firewall-modules.git
+pip install git+https://github.com/yourusername/hoon_firewall_modules.git
 ```
 
 ### 로컬 개발 설치
 ```bash
-git clone https://github.com/yourusername/hoon-firewall-modules.git
+git clone https://github.com/yourusername/hoon_firewall_modules.git
 cd hoon-firewall-modules
 pip install -e .
 ```
@@ -72,7 +72,7 @@ objects = firewall.export_network_objects()
 ### 3. 정책 분석
 
 ```python
-from modules.analysis_module import PolicyAnalyzer, RedundancyAnalyzer, ShadowAnalyzer, PolicyFilter
+from modules.firewall_analyzer import PolicyAnalyzer, RedundancyAnalyzer, ShadowAnalyzer, PolicyFilter
 import pandas as pd
 
 # 정책 데이터 로드
@@ -118,7 +118,7 @@ filtered_policies = policy_filter.filter_by_criteria(
 ```python
 # 기본 사용법 (권장)
 from modules.policy_comparator import PolicyComparator
-from modules.analysis_module import (
+from modules.firewall_analyzer import (
     PolicyAnalyzer, 
     RedundancyAnalyzer, 
     ShadowAnalyzer, 
@@ -128,13 +128,13 @@ from modules.firewall_module import FirewallInterface
 
 # 고급 기능 (개별 import)
 from modules.firewall_module.collector_factory import FirewallCollectorFactory
-from modules.delete_scenario.processors import policy_usage_processor
+from modules.policy_deletion_processor.processors import policy_usage_processor
 ```
 
 ### 5. 정책 필터링 상세 사용법
 
 ```python
-from modules.analysis_module import PolicyFilter
+from modules.firewall_analyzer import PolicyFilter
 import pandas as pd
 
 # PolicyFilter 인스턴스 생성
@@ -229,8 +229,8 @@ collector = FirewallCollectorFactory.get_collector(
 )
 
 # 삭제 시나리오 처리
-from modules.delete_scenario.processors import policy_usage_processor
-from modules.delete_scenario.utils import excel_manager
+from modules.policy_deletion_processor.processors import policy_usage_processor
+from modules.policy_deletion_processor.utils import excel_manager
 ```
 
 ## 📚 모듈 구조
@@ -240,8 +240,8 @@ hoon_firewall_modules/
 ├── modules/
 │   ├── policy_comparator/     # 정책 비교 기능
 │   ├── firewall_module/       # 방화벽 연동 기능
-│   ├── analysis_module/       # 정책 분석 기능
-│   └── delete_scenario/       # 삭제 시나리오 처리
+│   ├── firewall_analyzer/       # 정책 분석 기능
+│   └── policy_deletion_processor/       # 삭제 시나리오 처리
 ```
 
 ## 🔧 지원 방화벽
