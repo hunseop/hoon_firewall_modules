@@ -29,6 +29,16 @@ class FirewallProcessApp {
             this.clearLogs();
         });
 
+        // 수동 모드 토글
+        document.getElementById('manual-mode-btn').addEventListener('click', () => {
+            this.toggleManualMode();
+        });
+
+        // 일시정지/재개
+        document.getElementById('pause-btn').addEventListener('click', () => {
+            this.togglePause();
+        });
+
         // 방화벽 설정 저장
         document.getElementById('save-firewall-config').addEventListener('click', () => {
             this.saveFirewallConfig();
@@ -59,6 +69,7 @@ class FirewallProcessApp {
                     this.phases = data.phases;
                     this.currentState = data.state;
                     this.renderPhases();
+                    this.updateControlButtons();
                 } else {
                     // 상태가 실제로 변경되었는지 확인
                     const hasStateChanged = this.hasStateChanged(data.state);
@@ -75,6 +86,8 @@ class FirewallProcessApp {
                     if (hasLogsChanged) {
                         this.updateLogs();
                     }
+                    
+                    this.updateControlButtons();
                 }
                 
                 this.updateCurrentStatus();
@@ -263,74 +276,71 @@ class FirewallProcessApp {
     }
 
     getStepActions(step, stepStatus) {
-        const actions = [];
-
+        let actions = '';
+        
+        // 기본 실행/업로드 버튼
         if (step.requires_user_input) {
-            if (step.id === 'firewall_config') {
-                if (stepStatus === 'pending') {
-                    actions.push(`
-                        <button class="btn btn-primary" 
-                                onclick="app.openFirewallConfig()">
-                            <i class="fas fa-cog"></i>
-                            설정
+            if (step.file_type) {
+                // 파일 업로드 단계
+                actions += `
+                    <button class="btn btn-primary btn-sm me-2" onclick="app.openFileUpload('${step.file_type}', '${step.name}')">
+                        <i class="fas fa-upload"></i> 파일 업로드
+                    </button>
+                `;
+                
+                // 파일 교체 버튼 (파일이 이미 업로드된 경우)
+                if (stepStatus === 'completed' && step.allow_replace) {
+                    actions += `
+                        <button class="btn btn-warning btn-sm me-2" onclick="app.replaceFile('${step.file_type}')" title="파일 교체">
+                            <i class="fas fa-exchange-alt"></i> 파일 교체
                         </button>
-                    `);
+                    `;
                 }
-            } else if (step.file_type) {
-                if (stepStatus === 'pending') {
-                    actions.push(`
-                        <button class="btn btn-primary" 
-                                onclick="app.openFileUpload('${step.file_type}', '${step.name}')">
-                            <i class="fas fa-upload"></i>
-                            업로드
-                        </button>
-                    `);
-                } else if (stepStatus === 'completed') {
-                    actions.push(`
-                        <button class="btn btn-outline-info btn-sm" 
-                                onclick="app.previewFile('${step.file_type}')">
-                            <i class="fas fa-eye"></i>
-                            미리보기
-                        </button>
-                    `);
-                }
+            } else {
+                // 일반 설정 단계
+                actions += `
+                    <button class="btn btn-primary btn-sm me-2" onclick="app.openFirewallConfig()">
+                        <i class="fas fa-cog"></i> 설정
+                    </button>
+                `;
             }
         } else {
-            if (stepStatus === 'pending' && this.canExecuteStep(step.id)) {
-                actions.push(`
-                    <button class="btn btn-success" 
-                            onclick="app.executeStep('${step.id}')">
-                        <i class="fas fa-play"></i>
-                        실행
+            // 자동 실행 단계
+            const canExecute = this.canExecuteStep(step.id);
+            const isRunning = stepStatus === 'running';
+            const isCompleted = stepStatus === 'completed';
+            const isPaused = this.currentState.paused;
+            const isManualMode = this.currentState.manual_mode;
+            
+            // 실행 버튼 (수동 모드이거나 일시정지 상태에서만 수동 실행 가능)
+            if ((isManualMode || isPaused) && canExecute && !isRunning && !isCompleted) {
+                actions += `
+                    <button class="btn btn-success btn-sm me-2" onclick="app.executeStep('${step.id}')">
+                        <i class="fas fa-play"></i> 실행
                     </button>
-                `);
-            } else if (stepStatus === 'running') {
-                actions.push(`
-                    <button class="btn btn-outline-secondary" disabled>
-                        <i class="fas fa-spinner fa-spin"></i>
-                        실행 중
-                    </button>
-                `);
-            } else if (stepStatus === 'completed') {
-                actions.push(`
-                    <button class="btn btn-outline-success btn-sm" 
-                            onclick="app.executeStep('${step.id}')">
-                        <i class="fas fa-redo"></i>
-                        재실행
-                    </button>
-                `);
-            } else if (stepStatus === 'error') {
-                actions.push(`
-                    <button class="btn btn-warning" 
-                            onclick="app.executeStep('${step.id}')">
-                        <i class="fas fa-redo"></i>
-                        재시도
-                    </button>
-                `);
+                `;
             }
         }
-
-        return actions.join('');
+        
+        // 되돌리기 버튼 (완료된 단계에 대해)
+        if (stepStatus === 'completed' && step.allow_manual) {
+            actions += `
+                <button class="btn btn-outline-secondary btn-sm me-2" onclick="app.stepBack('${step.id}')" title="이 단계로 되돌리기">
+                    <i class="fas fa-undo"></i> 되돌리기
+                </button>
+            `;
+        }
+        
+        // 미리보기 버튼 (파일 업로드 단계)
+        if (step.file_type && stepStatus === 'completed') {
+            actions += `
+                <button class="btn btn-info btn-sm" onclick="app.previewFile('${step.file_type}')" title="파일 미리보기">
+                    <i class="fas fa-eye"></i> 미리보기
+                </button>
+            `;
+        }
+        
+        return actions;
     }
 
     canExecuteStep(stepId) {
@@ -595,13 +605,17 @@ class FirewallProcessApp {
     }
 
     autoExecuteNextSteps() {
-        // 자동 실행 가능한 다음 단계들을 연속으로 실행
+        // 수동 모드이거나 일시정지 상태면 자동 실행 안함
+        if (this.currentState.manual_mode || this.currentState.paused) {
+            return;
+        }
+        
         setTimeout(() => {
             const nextStep = this.getNextAutoExecutableStep();
             if (nextStep) {
                 this.executeStep(nextStep.id);
             }
-        }, 2000);
+        }, 1000);
     }
 
     getNextAutoExecutableStep() {
@@ -678,6 +692,164 @@ class FirewallProcessApp {
 
     clearLogs() {
         document.getElementById('logs-container').innerHTML = '';
+        this.currentState.logs = [];
+    }
+    
+    // === 수동 제어 기능 ===
+    
+    async toggleManualMode() {
+        try {
+            const response = await fetch('/api/control/manual-mode', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    enabled: !this.currentState.manual_mode
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.currentState.manual_mode = data.manual_mode;
+                this.updateManualModeButton();
+                
+                // 모든 단계 버튼 상태 업데이트
+                this.updateStepsOnly();
+                
+                alert(data.message);
+            } else {
+                alert('오류: ' + data.error);
+            }
+        } catch (error) {
+            console.error('수동 모드 토글 오류:', error);
+            alert('수동 모드 변경 중 오류가 발생했습니다.');
+        }
+    }
+    
+    async togglePause() {
+        try {
+            const response = await fetch('/api/control/pause', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    paused: !this.currentState.paused
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                this.currentState.paused = data.paused;
+                this.updatePauseButton();
+                
+                alert(data.message);
+            } else {
+                alert('오류: ' + data.error);
+            }
+        } catch (error) {
+            console.error('일시정지 토글 오류:', error);
+            alert('일시정지 상태 변경 중 오류가 발생했습니다.');
+        }
+    }
+    
+    async stepBack(stepId) {
+        if (!confirm('이 단계로 되돌아가면 이후 모든 진행사항이 삭제됩니다. 계속하시겠습니까?')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/control/step-back/${stepId}`, {
+                method: 'POST'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                alert(data.message);
+                // 상태 새로고침
+                await this.loadInitialStatus();
+            } else {
+                alert('오류: ' + data.error);
+            }
+        } catch (error) {
+            console.error('단계 되돌리기 오류:', error);
+            alert('단계 되돌리기 중 오류가 발생했습니다.');
+        }
+    }
+    
+    async replaceFile(fileType) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.xlsx,.xls';
+        
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            if (!confirm(`${fileType} 파일을 교체하시겠습니까? 관련 처리 단계들이 재실행됩니다.`)) {
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch(`/api/file/replace/${fileType}`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(data.message);
+                    // 상태 새로고침
+                    await this.loadInitialStatus();
+                } else {
+                    alert('오류: ' + data.error);
+                }
+            } catch (error) {
+                console.error('파일 교체 오류:', error);
+                alert('파일 교체 중 오류가 발생했습니다.');
+            }
+        };
+        
+        input.click();
+    }
+    
+    updateManualModeButton() {
+        const btn = document.getElementById('manual-mode-btn');
+        if (this.currentState.manual_mode) {
+            btn.classList.remove('btn-outline-primary');
+            btn.classList.add('btn-primary');
+            btn.innerHTML = '<i class="fas fa-hand-paper"></i> 수동 모드';
+        } else {
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-outline-primary');
+            btn.innerHTML = '<i class="fas fa-play"></i> 자동 모드';
+        }
+    }
+    
+    updatePauseButton() {
+        const btn = document.getElementById('pause-btn');
+        if (this.currentState.paused) {
+            btn.classList.remove('btn-outline-warning');
+            btn.classList.add('btn-warning');
+            btn.innerHTML = '<i class="fas fa-play"></i> 재개';
+        } else {
+            btn.classList.remove('btn-warning');
+            btn.classList.add('btn-outline-warning');
+            btn.innerHTML = '<i class="fas fa-pause"></i> 일시정지';
+        }
+    }
+
+    updateControlButtons() {
+        this.updateManualModeButton();
+        this.updatePauseButton();
     }
 }
 

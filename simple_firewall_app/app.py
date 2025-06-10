@@ -53,7 +53,9 @@ process_state = {
     'firewall_config': {},
     'files': {},
     'errors': [],
-    'logs': []
+    'logs': [],
+    'manual_mode': False,  # 수동 진행 모드
+    'paused': False       # 일시정지 상태
 }
 
 # 프로세스 단계 정의
@@ -66,7 +68,9 @@ PROCESS_PHASES = {
                 'name': '방화벽 접속 설정',
                 'description': 'Vendor 선택, IP 입력, 계정 정보 입력, 연결 테스트',
                 'requires_user_input': True,
-                'auto_proceed': False
+                'auto_proceed': False,
+                'allow_manual': True,
+                'allow_pause': True
             }
         ]
     },
@@ -78,21 +82,27 @@ PROCESS_PHASES = {
                 'name': '방화벽 정책 추출',
                 'description': '방화벽에서 정책 데이터 추출',
                 'requires_user_input': False,
-                'auto_proceed': True
+                'auto_proceed': True,
+                'allow_manual': True,
+                'allow_pause': True
             },
             {
                 'id': 'extract_usage',
                 'name': '방화벽 사용이력 추출',
                 'description': '방화벽에서 사용이력 데이터 추출',
                 'requires_user_input': False,
-                'auto_proceed': True
+                'auto_proceed': True,
+                'allow_manual': True,
+                'allow_pause': True
             },
             {
                 'id': 'extract_duplicates',
                 'name': '방화벽 중복 정책 추출',
                 'description': '방화벽에서 중복 정책 데이터 추출',
                 'requires_user_input': False,
-                'auto_proceed': True
+                'auto_proceed': True,
+                'allow_manual': True,
+                'allow_pause': True
             }
         ]
     },
@@ -104,7 +114,9 @@ PROCESS_PHASES = {
                 'name': '신청정보 파싱',
                 'description': 'Description에서 신청번호 추출',
                 'requires_user_input': False,
-                'auto_proceed': True
+                'auto_proceed': True,
+                'allow_manual': True,
+                'allow_pause': True
             }
         ]
     },
@@ -117,7 +129,10 @@ PROCESS_PHASES = {
                 'description': '신청정보 파일을 업로드하세요',
                 'requires_user_input': True,
                 'auto_proceed': False,
-                'file_type': 'application'
+                'file_type': 'application',
+                'allow_manual': True,
+                'allow_pause': True,
+                'allow_replace': True
             },
             {
                 'id': 'upload_mis_file',
@@ -125,14 +140,19 @@ PROCESS_PHASES = {
                 'description': 'MIS ID 파일을 업로드하세요',
                 'requires_user_input': True,
                 'auto_proceed': False,
-                'file_type': 'mis_id'
+                'file_type': 'mis_id',
+                'allow_manual': True,
+                'allow_pause': True,
+                'allow_replace': True
             },
             {
                 'id': 'validate_files',
                 'name': '파일 포맷 검증',
                 'description': '업로드된 파일들의 포맷과 데이터 유효성 검사',
                 'requires_user_input': False,
-                'auto_proceed': True
+                'auto_proceed': True,
+                'allow_manual': True,
+                'allow_pause': True
             }
         ]
     },
@@ -144,28 +164,36 @@ PROCESS_PHASES = {
                 'name': 'MIS ID 정보 추가',
                 'description': '정책 데이터에 MIS ID 정보 통합',
                 'requires_user_input': False,
-                'auto_proceed': True
+                'auto_proceed': True,
+                'allow_manual': True,
+                'allow_pause': True
             },
             {
                 'id': 'merge_application_info',
                 'name': '신청정보 통합',
                 'description': '신청정보를 정책 데이터에 통합',
                 'requires_user_input': False,
-                'auto_proceed': True
+                'auto_proceed': True,
+                'allow_manual': True,
+                'allow_pause': True
             },
             {
                 'id': 'vendor_exception_handling',
                 'name': 'Vendor별 예외처리',
                 'description': '벤더별 특수 규칙 적용',
                 'requires_user_input': False,
-                'auto_proceed': True
+                'auto_proceed': True,
+                'allow_manual': True,
+                'allow_pause': True
             },
             {
                 'id': 'classify_duplicates',
                 'name': '중복정책 분류',
                 'description': '중복 정책 식별 및 분류',
                 'requires_user_input': False,
-                'auto_proceed': True
+                'auto_proceed': True,
+                'allow_manual': True,
+                'allow_pause': True
             }
         ]
     },
@@ -177,21 +205,27 @@ PROCESS_PHASES = {
                 'name': '사용이력 정보 추가',
                 'description': '정책에 사용이력 정보 매핑',
                 'requires_user_input': False,
-                'auto_proceed': True
+                'auto_proceed': True,
+                'allow_manual': True,
+                'allow_pause': True
             },
             {
                 'id': 'finalize_classification',
                 'name': '최종 분류 및 검증',
                 'description': '최종 데이터 분류 및 검증',
                 'requires_user_input': False,
-                'auto_proceed': True
+                'auto_proceed': True,
+                'allow_manual': True,
+                'allow_pause': True
             },
             {
                 'id': 'generate_results',
                 'name': '결과 파일 생성',
                 'description': '최종 공지파일 및 결과 파일 생성',
                 'requires_user_input': False,
-                'auto_proceed': True
+                'auto_proceed': True,
+                'allow_manual': True,
+                'allow_pause': True
             }
         ]
     }
@@ -470,11 +504,15 @@ def index():
 
 @app.route('/api/status')
 def get_status():
-    """현재 프로세스 상태 조회"""
+    """현재 상태 반환"""
     return jsonify({
         'success': True,
-        'state': process_state,
-        'phases': PROCESS_PHASES
+        'phases': PROCESS_PHASES,
+        'state': {
+            **process_state,
+            'manual_mode': process_state.get('manual_mode', False),
+            'paused': process_state.get('paused', False)
+        }
     })
 
 @app.route('/api/firewall/config', methods=['POST'])
@@ -700,18 +738,225 @@ def preview_file(file_type):
 def reset_process():
     """프로세스 초기화"""
     global process_state
-    process_state = {
-        'current_phase': 1,
-        'current_step': 1,
-        'status': 'ready',
-        'steps': {},
-        'firewall_config': {},
-        'files': {},
-        'errors': [],
-        'logs': []
-    }
-    add_log("프로세스가 초기화되었습니다")
-    return jsonify({'success': True})
+    
+    try:
+        # 업로드 파일들 삭제
+        upload_dir = Path(app.config['UPLOAD_FOLDER'])
+        for file_path in upload_dir.glob('*'):
+            if file_path.is_file():
+                file_path.unlink()
+        
+        # 결과 파일들 삭제  
+        results_dir = Path(app.config['RESULTS_FOLDER'])
+        for file_path in results_dir.glob('*'):
+            if file_path.is_file():
+                file_path.unlink()
+        
+        # 상태 초기화
+        process_state = {
+            'current_phase': 1,
+            'current_step': 1,
+            'status': 'ready',
+            'steps': {},
+            'firewall_config': {},
+            'files': {},
+            'errors': [],
+            'logs': [],
+            'manual_mode': False,
+            'paused': False
+        }
+        
+        add_log("프로세스가 초기화되었습니다", 'info')
+        
+        return jsonify({
+            'success': True,
+            'message': '프로세스가 초기화되었습니다'
+        })
+        
+    except Exception as e:
+        add_log(f"초기화 오류: {str(e)}", 'error')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# === 수동 제어 API ===
+
+@app.route('/api/control/manual-mode', methods=['POST'])
+def toggle_manual_mode():
+    """수동 진행 모드 토글"""
+    global process_state
+    
+    try:
+        data = request.get_json()
+        enabled = data.get('enabled', not process_state['manual_mode'])
+        
+        process_state['manual_mode'] = enabled
+        
+        mode_text = "수동 진행 모드" if enabled else "자동 진행 모드"
+        add_log(f"{mode_text}로 변경되었습니다", 'info')
+        
+        return jsonify({
+            'success': True,
+            'manual_mode': enabled,
+            'message': f'{mode_text}로 변경되었습니다'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/control/pause', methods=['POST'])
+def toggle_pause():
+    """프로세스 일시정지/재개"""
+    global process_state
+    
+    try:
+        data = request.get_json()
+        paused = data.get('paused', not process_state['paused'])
+        
+        process_state['paused'] = paused
+        
+        status_text = "일시정지" if paused else "재개"
+        add_log(f"프로세스가 {status_text}되었습니다", 'info')
+        
+        return jsonify({
+            'success': True,
+            'paused': paused,
+            'message': f'프로세스가 {status_text}되었습니다'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/control/step-back/<step_id>', methods=['POST'])
+def step_back(step_id):
+    """특정 단계로 되돌리기"""
+    global process_state
+    
+    try:
+        # 해당 단계와 이후 단계들 초기화
+        steps_to_reset = []
+        found_target = False
+        
+        for phase_id, phase in PROCESS_PHASES.items():
+            for step in phase['steps']:
+                if step['id'] == step_id:
+                    found_target = True
+                if found_target:
+                    steps_to_reset.append(step['id'])
+        
+        if not found_target:
+            return jsonify({
+                'success': False,
+                'error': '해당 단계를 찾을 수 없습니다'
+            }), 400
+        
+        # 상태 초기화
+        for step_reset_id in steps_to_reset:
+            if step_reset_id in process_state['steps']:
+                del process_state['steps'][step_reset_id]
+        
+        # 관련 파일들도 삭제
+        if step_id in ['upload_application_file', 'upload_mis_file']:
+            file_type = 'application' if 'application' in step_id else 'mis_id'
+            if file_type in process_state['files']:
+                # 파일 삭제
+                file_path = process_state['files'][file_type]
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                del process_state['files'][file_type]
+        
+        add_log(f"'{step_id}' 단계로 되돌아갔습니다", 'info')
+        
+        return jsonify({
+            'success': True,
+            'message': f'단계가 초기화되었습니다'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/file/replace/<file_type>', methods=['POST'])
+def replace_file(file_type):
+    """파일 교체"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': '파일이 선택되지 않았습니다'
+            }), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': '파일이 선택되지 않았습니다'
+            }), 400
+        
+        # 기존 파일 삭제
+        if file_type in process_state['files']:
+            old_file_path = process_state['files'][file_type]
+            if os.path.exists(old_file_path):
+                os.remove(old_file_path)
+                add_log(f"기존 {file_type} 파일이 삭제되었습니다", 'info')
+        
+        # 새 파일 저장
+        filename = secure_filename(file.filename)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{file_type}_{timestamp}_{filename}"
+        
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+        
+        # 상태 업데이트
+        process_state['files'][file_type] = file_path
+        
+        # 관련 단계들 재실행을 위해 상태 초기화
+        steps_to_reset = []
+        if file_type == 'application':
+            steps_to_reset = ['validate_files', 'merge_application_info', 'vendor_exception_handling', 
+                             'classify_duplicates', 'add_usage_info', 'finalize_classification', 
+                             'generate_results']
+        elif file_type == 'mis_id':
+            steps_to_reset = ['validate_files', 'add_mis_info', 'merge_application_info', 
+                             'vendor_exception_handling', 'classify_duplicates', 'add_usage_info', 
+                             'finalize_classification', 'generate_results']
+        
+        for step_id in steps_to_reset:
+            if step_id in process_state['steps']:
+                del process_state['steps'][step_id]
+        
+        add_log(f"{file_type} 파일이 교체되었습니다: {filename}", 'success')
+        
+        return jsonify({
+            'success': True,
+            'message': f'{file_type} 파일이 성공적으로 교체되었습니다',
+            'filename': filename
+        })
+        
+    except Exception as e:
+        add_log(f"파일 교체 오류: {str(e)}", 'error')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 if __name__ == '__main__':
+    print("🔥 방화벽 정책 프로세서 시작")
+    print("📍 http://127.0.0.1:5005")
+    
+    if FIREWALL_MODULE_AVAILABLE:
+        print("✅ 방화벽 모듈 연동 가능")
+    else:
+        print("⚠️  방화벽 모듈 없음 - 시뮬레이션 모드만 가능")
+    
     app.run(debug=True, host='0.0.0.0', port=5005) 

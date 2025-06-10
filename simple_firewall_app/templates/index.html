@@ -13,17 +13,28 @@
         <!-- 미니멀 헤더 -->
         <div class="header-section">
             <div class="container-fluid">
-                <div class="row align-items-center">
-                    <div class="col">
-                        <h1>방화벽 정책 프로세서</h1>
-                        <div class="subtitle">Firewall Policy Management Workflow</div>
-                    </div>
-                    <div class="col-auto">
-                        <div class="header-controls">
-                            <button id="reset-btn" class="btn btn-outline-danger btn-sm">
-                                <i class="fas fa-redo"></i>
-                                초기화
-                            </button>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h1 class="mb-0">방화벽 정책 프로세서</h1>
+                            <div class="d-flex gap-2">
+                                <!-- 수동 제어 패널 -->
+                                <div class="btn-group me-2" role="group">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="manual-mode-btn" title="수동 진행 모드 토글">
+                                        <i class="fas fa-hand-paper"></i> 수동 모드
+                                    </button>
+                                    <button type="button" class="btn btn-outline-warning btn-sm" id="pause-btn" title="일시정지/재개">
+                                        <i class="fas fa-pause"></i> 일시정지
+                                    </button>
+                                </div>
+                                
+                                <button type="button" class="btn btn-secondary btn-sm" id="clear-logs-btn">
+                                    <i class="fas fa-broom"></i> 로그 지우기
+                                </button>
+                                <button type="button" class="btn btn-danger btn-sm" id="reset-btn">
+                                    <i class="fas fa-redo"></i> 초기화
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
