@@ -48,31 +48,54 @@ class RequestInfoAdder:
         rule_df['End Date'] = pd.to_datetime(rule_df['End Date']).dt.date
         info_df['REQUEST_END_DATE'] = pd.to_datetime(info_df['REQUEST_END_DATE']).dt.date
 
+        # info_df를 빠르게 조회할 수 있도록 키별 딕셔너리 생성
+        records = info_df.to_dict(orient='records')
+        key_request = {}
+        key_mis = {}
+        key_writer = {}
+        key_requester = {}
+
+        for rec in records:
+            rid = rec.get('REQUEST_ID')
+            key_request.setdefault(rid, rec)
+            mis = rec.get('MIS_ID')
+            if mis is not None and mis != 'nan':
+                key_mis[(rid, mis)] = rec
+            writer = rec.get('WRITE_PERSON_ID')
+            if writer is not None and writer != 'nan':
+                key_writer[(rid, rec['REQUEST_END_DATE'], writer)] = rec
+            requester = rec.get('REQUESTER_ID')
+            if requester is not None and requester != 'nan':
+                key_requester[(rid, rec['REQUEST_END_DATE'], requester)] = rec
+
         total = len(rule_df)
         for idx, row in rule_df.iterrows():
             print(f"\r신청 정보 매칭 중: {idx + 1}/{total}", end='', flush=True)
+            rid = row['Request ID']
+            matched_row = None
+
             if row['Request Type'] == 'GROUP':
-                matched_row = info_df[
-                    ((info_df['REQUEST_ID'] == row['Request ID']) & (info_df['MIS_ID'] == row['MIS ID'])) |
-                    ((info_df['REQUEST_ID'] == row['Request ID']) & (info_df['REQUEST_END_DATE'] == row['End Date']) & (info_df['WRITE_PERSON_ID'] == row['Request User'])) |
-                    ((info_df['REQUEST_ID'] == row['Request ID']) & (info_df['REQUEST_END_DATE'] == row['End Date']) & (info_df['REQUESTER_ID'] == row['Request User']))
-                ]
+                matched_row = key_mis.get((rid, row['MIS ID']))
+                if matched_row is None:
+                    matched_row = key_writer.get((rid, row['End Date'], row['Request User']))
+                if matched_row is None:
+                    matched_row = key_requester.get((rid, row['End Date'], row['Request User']))
             else:
-                matched_row = info_df[info_df['REQUEST_ID'] == row['Request ID']]
-            
-            if not matched_row.empty:
-                for col in matched_row.columns:
+                matched_row = key_request.get(rid)
+
+            if matched_row:
+                for col, val in matched_row.items():
                     if col in ['REQUEST_START_DATE', 'REQUEST_END_DATE', 'Start Date', 'End Date']:
-                        rule_df.at[idx, col] = pd.to_datetime(matched_row[col].values[0], errors='coerce')
+                        rule_df.at[idx, col] = pd.to_datetime(val, errors='coerce')
                     else:
-                        rule_df.at[idx, col] = matched_row[col].values[0]
+                        rule_df.at[idx, col] = val
             elif row['Request Type'] != 'nan' and row['Request Type'] != 'Unknown':
-                rule_df.at[idx, 'REQUEST_ID'] = row['Request ID']
+                rule_df.at[idx, 'REQUEST_ID'] = rid
                 rule_df.at[idx, 'REQUEST_START_DATE'] = row['Start Date']
                 rule_df.at[idx, 'REQUEST_END_DATE'] = row['End Date']
                 rule_df.at[idx, 'REQUESTER_ID'] = row['Request User']
                 rule_df.at[idx, 'REQUESTER_EMAIL'] = row['Request User'] + '@samsung.com'
-        
+
         print()  # 줄바꿈
     
     def find_auto_extension_id(self, info_df):
