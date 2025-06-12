@@ -5,8 +5,11 @@
 1. **Phase 1 – 방화벽 연동**
    - 장비 접속 정보를 입력하여 연결을 확인합니다.
 2. **Phase 2 – 데이터 수집**
+   - `upload_policies_file`: 미리 추출된 정책 파일을 업로드할 수 있습니다.
    - `extract_policies`: 방화벽에서 정책을 추출합니다.
+   - `upload_usage_file`: 미리 추출된 사용이력 파일을 업로드할 수 있습니다.
    - `extract_usage`: 사용이력 데이터를 추출합니다.
+   - `upload_duplicates_file`: 미리 추출된 중복 정책 파일을 업로드할 수 있습니다.
    - `extract_duplicates`: 중복 정책을 식별합니다.
 3. **Phase 3 – 정보 파싱**
    - `parse_descriptions`: 정책 설명에서 신청번호 등을 파싱하여 파일로 저장합니다.
