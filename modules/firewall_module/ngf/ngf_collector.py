@@ -3,11 +3,37 @@ import pandas as pd
 from typing import Optional
 from datetime import datetime, timedelta
 from ..firewall_interface import FirewallInterface
+from ..exceptions import FirewallConnectionError, FirewallAuthenticationError
 from .ngf_module import NGFClient
 
 class NGFCollector(FirewallInterface):
     def __init__(self, hostname: str, ext_clnt_id: str, ext_clnt_secret: str):
+        super().__init__(hostname, ext_clnt_id, ext_clnt_secret)
         self.client = NGFClient(hostname, ext_clnt_id, ext_clnt_secret)
+
+    def connect(self) -> bool:
+        token = self.client.login()
+        if token:
+            self._connected = True
+            self._connection_info = {"token": token}
+            return True
+        self._connected = False
+        raise FirewallAuthenticationError("NGF 로그인 실패")
+
+    def disconnect(self) -> bool:
+        self.client.logout()
+        self._connected = False
+        return True
+
+    def test_connection(self) -> bool:
+        try:
+            token = self.client.login()
+            if token:
+                self.client.logout()
+                return True
+            return False
+        except Exception:
+            return False
 
     def get_system_info(self) -> pd.DataFrame:
         """시스템 정보를 반환합니다."""
