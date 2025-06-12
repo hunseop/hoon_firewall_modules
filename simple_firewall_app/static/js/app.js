@@ -53,6 +53,13 @@ class FirewallProcessApp {
         document.getElementById('upload-file-btn').addEventListener('click', () => {
             this.uploadFile();
         });
+
+        const nextBtn = document.getElementById('next-step-btn');
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => {
+                this.executeNextStep();
+            });
+        }
     }
 
     async loadInitialStatus() {
@@ -635,6 +642,19 @@ class FirewallProcessApp {
         }
     }
 
+    async executeNextStep() {
+        const nextStep = this.getNextPendingStep();
+        if (!nextStep) {
+            alert('더 이상 실행할 단계가 없습니다.');
+            return;
+        }
+        if (!this.canExecuteStep(nextStep.id)) {
+            alert('이전 단계가 완료되지 않았습니다.');
+            return;
+        }
+        await this.executeStep(nextStep.id);
+    }
+
     autoExecuteNextSteps() {
         // 수동 모드이거나 일시정지 상태면 자동 실행 안함
         if (this.currentState.manual_mode || this.currentState.paused) {
@@ -889,6 +909,17 @@ class FirewallProcessApp {
     updateControlButtons() {
         this.updateManualModeButton();
         this.updatePauseButton();
+
+        const nextBtn = document.getElementById('next-step-btn');
+        if (nextBtn) {
+            if (this.currentState.manual_mode || this.currentState.paused) {
+                nextBtn.style.display = 'inline-block';
+                const next = this.getNextPendingStep();
+                nextBtn.disabled = !next || !this.canExecuteStep(next.id);
+            } else {
+                nextBtn.style.display = 'none';
+            }
+        }
     }
 }
 

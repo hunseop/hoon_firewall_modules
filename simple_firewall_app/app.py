@@ -1117,9 +1117,15 @@ def toggle_manual_mode():
     try:
         data = request.get_json()
         enabled = data.get('enabled', not process_state['manual_mode'])
-        
+
         process_state['manual_mode'] = enabled
-        
+
+        if enabled and 'firewall_config' not in process_state['steps']:
+            update_step_status('firewall_config', 'completed', {'skipped': True})
+        elif not enabled and process_state['steps'].get('firewall_config', {}).get('result', {}).get('skipped'):
+            if 'firewall_config' in process_state['steps']:
+                del process_state['steps']['firewall_config']
+
         mode_text = "수동 진행 모드" if enabled else "자동 진행 모드"
         add_log(f"{mode_text}로 변경되었습니다", 'info')
         
