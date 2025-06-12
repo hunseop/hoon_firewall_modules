@@ -13,7 +13,16 @@ from flask import Flask, render_template, request, jsonify, send_file
 from types import SimpleNamespace
 
 from modules.policy_deletion_processor.utils.file_manager import FileManager
-from modules.policy_deletion_processor.processors import MisIdAdder, PolicyUsageProcessor, RequestParser
+from modules.policy_deletion_processor.utils.excel_manager import ExcelManager
+from modules.policy_deletion_processor.processors import (
+    MisIdAdder,
+    PolicyUsageProcessor,
+    RequestParser,
+    RequestInfoAdder,
+    ExceptionHandler,
+    DuplicatePolicyClassifier,
+    NotificationClassifier,
+)
 from werkzeug.utils import secure_filename
 import pandas as pd
 
@@ -268,6 +277,24 @@ def record_result_file(step_id, filepath):
         'upload_time': datetime.now().isoformat()
     }
 
+def generate_result_path(step_id, label=None, ext='xlsx'):
+    """단계별 결과 파일명을 생성"""
+    ip = process_state.get('firewall_config', {}).get('primary_ip', 'unknown')
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    parts = [timestamp, ip, step_id]
+    if label:
+        parts.append(label)
+    filename = f"{'_'.join(parts)}.{ext}"
+    return os.path.join(app.config['RESULTS_FOLDER'], filename)
+
+def rename_and_record(step_id, src_path, label=None):
+    ext = os.path.splitext(src_path)[1].lstrip('.')
+    dest = generate_result_path(step_id if label is None else f"{step_id}_{label}", None, ext)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    os.replace(src_path, dest)
+    record_result_file(step_id, dest)
+    return dest
+
 def extract_firewall_policies():
     """방화벽 정책 추출"""
     try:
@@ -283,14 +310,14 @@ def extract_firewall_policies():
             # 출처 표시를 위해 컬럼 추가
             primary_df['장비구분'] = 'Primary'
             policies['primary'] = primary_df
-            output_primary = os.path.join('results', 'firewall_policies_primary.xlsx')
-            os.makedirs('results', exist_ok=True)
+            output_primary = generate_result_path('extract_policies', 'primary')
+            os.makedirs(os.path.dirname(output_primary), exist_ok=True)
             primary_df.to_excel(output_primary, index=False)
             add_log(f"Primary 정책 추출 완료: {len(primary_df)}개")
             results.append({
                 'target': 'primary',
                 'count': len(primary_df),
-                'file': 'firewall_policies_primary.xlsx',
+                'file': os.path.basename(output_primary),
                 'path': output_primary
             })
             
@@ -302,13 +329,13 @@ def extract_firewall_policies():
 
                     secondary_df['장비구분'] = 'Secondary'
                     policies['secondary'] = secondary_df
-                    output_secondary = os.path.join('results', 'firewall_policies_secondary.xlsx')
+                    output_secondary = generate_result_path('extract_policies', 'secondary')
                     secondary_df.to_excel(output_secondary, index=False)
                     add_log(f"Secondary 정책 추출 완료: {len(secondary_df)}개")
                     results.append({
                         'target': 'secondary',
                         'count': len(secondary_df),
-                        'file': 'firewall_policies_secondary.xlsx',
+                        'file': os.path.basename(output_secondary),
                         'path': output_secondary
                     })
                     
@@ -353,13 +380,13 @@ def extract_firewall_usage():
 
             primary_df['장비구분'] = 'Primary'
             usage['primary'] = primary_df
-            output_primary = os.path.join('results', 'usage_history_primary.xlsx')
+            output_primary = generate_result_path('extract_usage', 'primary')
             primary_df.to_excel(output_primary, index=False)
             add_log(f"Primary 사용이력 추출 완료: {len(primary_df)}개")
             results.append({
                 'target': 'primary',
                 'count': len(primary_df),
-                'file': 'usage_history_primary.xlsx',
+                'file': os.path.basename(output_primary),
                 'path': output_primary
             })
             
@@ -371,13 +398,13 @@ def extract_firewall_usage():
 
                     secondary_df['장비구분'] = 'Secondary'
                     usage['secondary'] = secondary_df
-                    output_secondary = os.path.join('results', 'usage_history_secondary.xlsx')
+                    output_secondary = generate_result_path('extract_usage', 'secondary')
                     secondary_df.to_excel(output_secondary, index=False)
                     add_log(f"Secondary 사용이력 추출 완료: {len(secondary_df)}개")
                     results.append({
                         'target': 'secondary',
                         'count': len(secondary_df),
-                        'file': 'usage_history_secondary.xlsx',
+                        'file': os.path.basename(output_secondary),
                         'path': output_secondary
                     })
                     
@@ -437,13 +464,13 @@ def extract_duplicate_policies():
                 else:
                     duplicate_df = analyze_duplicate_policies(df)
 
-                output_file = os.path.join('results', f'duplicate_policies_{label}.xlsx')
+                output_file = generate_result_path('extract_duplicates', label)
                 duplicate_df.to_excel(output_file, index=False)
 
                 results.append({
                     'target': label,
                     'count': len(duplicate_df),
-                    'file': f'duplicate_policies_{label}.xlsx',
+                    'file': os.path.basename(output_file),
                     'path': output_file
                 })
 
@@ -497,59 +524,124 @@ def run_policy_processor(step_id):
         fm = FileManager(cfg)
         paths = iter(file_list)
         fm.select_files = lambda extension=None: next(paths, None)
+        captured = {}
+        original_update = fm.update_version
+
+        def updater(name, final_version=False):
+            new_name = os.path.join(app.config['RESULTS_FOLDER'], os.path.basename(original_update(name, final_version)))
+            captured['output'] = new_name
+            return new_name
+
+        fm.update_version = updater
+        fm._captured = captured
+        original_remove = fm.remove_extension
+
+        def remover(name):
+            base = os.path.join(app.config['RESULTS_FOLDER'], os.path.basename(original_remove(name)))
+            captured.setdefault('remove_base', base)
+            return base
+
+        fm.remove_extension = remover
         return fm
 
     if step_id == 'parse_descriptions':
-        policy_path = os.path.join(app.config['RESULTS_FOLDER'], 'firewall_policies_primary.xlsx')
+        policy_path = process_state.get('files', {}).get('extract_policies', {}).get('filepath')
         fm = prepare_file_manager([policy_path])
         processor = RequestParser(fm.config)
-        captured = {}
-        original_update = fm.update_version
-        def updater(name, final_version=False):
-            new_name = original_update(name, final_version)
-            captured['output'] = new_name
-            return new_name
-        fm.update_version = updater
         if not processor.parse_request_type(fm):
             raise Exception('신청 정보 파싱 실패')
-        record_result_file(step_id, captured.get('output'))
-        return {'file': os.path.basename(captured.get('output'))}
+        output = fm._captured.get('output')
+        record_result_file(step_id, output)
+        return {'file': os.path.basename(output)}
 
     if step_id == 'add_mis_info':
         mis_path = process_state.get('files', {}).get('mis_id', {}).get('filepath')
-        policy_path = os.path.join(app.config['RESULTS_FOLDER'], 'firewall_policies_primary.xlsx')
+        policy_path = process_state.get('files', {}).get('extract_policies', {}).get('filepath')
         fm = prepare_file_manager([policy_path, mis_path])
         processor = MisIdAdder(fm.config)
-        captured = {}
-        original_update = fm.update_version
-        def updater(name, final_version=False):
-            new_name = original_update(name, final_version)
-            captured['output'] = new_name
-            return new_name
-        fm.update_version = updater
         if not processor.add_mis_id(fm):
             raise Exception('MIS ID 추가 실패')
-        record_result_file('add_mis_info', captured.get('output'))
-        process_state['files']['policy_with_mis'] = captured.get('output')
-        return {'file': os.path.basename(captured.get('output'))}
+        output = fm._captured.get('output')
+        record_result_file('add_mis_info', output)
+        process_state['files']['policy_with_mis'] = output
+        return {'file': os.path.basename(output)}
 
     if step_id == 'add_usage_info':
-        usage_path = os.path.join(app.config['RESULTS_FOLDER'], 'usage_history_primary.xlsx')
+        usage_path = process_state.get('files', {}).get('extract_usage', {}).get('filepath')
         policy_path = process_state.get('files', {}).get('policy_with_mis')
         fm = prepare_file_manager([policy_path, usage_path])
         processor = PolicyUsageProcessor(fm.config)
-        captured = {}
-        original_update = fm.update_version
-        def updater(name, final_version=False):
-            new_name = original_update(name, final_version)
-            captured['output'] = new_name
-            return new_name
-        fm.update_version = updater
         if not processor.add_usage_status(fm):
             raise Exception('사용 정보 추가 실패')
-        record_result_file('add_usage_info', captured.get('output'))
-        process_state['files']['policy_with_usage'] = captured.get('output')
-        return {'file': os.path.basename(captured.get('output'))}
+        output = fm._captured.get('output')
+        record_result_file('add_usage_info', output)
+        process_state['files']['policy_with_usage'] = output
+        return {'file': os.path.basename(output)}
+
+    if step_id == 'merge_application_info':
+        app_path = process_state.get('files', {}).get('application', {}).get('filepath')
+        policy_path = process_state.get('files', {}).get('parse_descriptions', {}).get('filepath')
+        fm = prepare_file_manager([policy_path, app_path])
+        processor = RequestInfoAdder(fm.config)
+        if not processor.add_request_info(fm):
+            raise Exception('신청 정보 통합 실패')
+        output = fm._captured.get('output')
+        record_result_file(step_id, output)
+        process_state['files']['policy_with_app'] = output
+        return {'file': os.path.basename(output)}
+
+    if step_id == 'vendor_exception_handling':
+        vendor = process_state.get('firewall_config', {}).get('vendor', 'paloalto')
+        policy_path = process_state.get('files', {}).get('policy_with_app') or process_state.get('files', {}).get('policy_with_mis')
+        fm = prepare_file_manager([policy_path])
+        handler = ExceptionHandler(fm.config)
+        method = getattr(handler, f"{vendor}_exception", None)
+        if not method or not method(fm):
+            raise Exception('예외처리 실패')
+        output = fm._captured.get('output')
+        record_result_file(step_id, output)
+        process_state['files']['policy_after_exception'] = output
+        return {'file': os.path.basename(output)}
+
+    if step_id == 'classify_duplicates':
+        dup_path = process_state.get('files', {}).get('extract_duplicates', {}).get('filepath')
+        info_path = process_state.get('files', {}).get('policy_with_app')
+        fm = prepare_file_manager([dup_path, info_path])
+        classifier = DuplicatePolicyClassifier(fm.config)
+        if not classifier.organize_redundant_file(fm):
+            raise Exception('중복정책 분류 실패')
+        base = fm._captured.get('remove_base')
+        outputs = [f"{base}_정리.xlsx", f"{base}_공지.xlsx", f"{base}_삭제.xlsx"]
+        for p in outputs:
+            record_result_file(step_id, p)
+        process_state['files']['duplicate_summary'] = outputs[0]
+        return {'files': [os.path.basename(p) for p in outputs]}
+
+    if step_id == 'finalize_classification':
+        policy_path = process_state.get('files', {}).get('policy_with_usage')
+        dup_summary = process_state.get('files', {}).get('duplicate_summary')
+        fm = prepare_file_manager([policy_path, dup_summary])
+        classifier = DuplicatePolicyClassifier(fm.config)
+        if not classifier.add_duplicate_status(fm):
+            raise Exception('중복 정보 추가 실패')
+        output = fm._captured.get('output')
+        record_result_file(step_id, output)
+        process_state['files']['final_policy'] = output
+        return {'file': os.path.basename(output)}
+
+    if step_id == 'generate_results':
+        policy_path = process_state.get('files', {}).get('final_policy')
+        fm = prepare_file_manager([policy_path])
+        excel = ExcelManager(fm.config)
+        notifier = NotificationClassifier(fm.config)
+        before = set(os.listdir(app.config['RESULTS_FOLDER']))
+        if not notifier.classify_notifications(fm, excel):
+            raise Exception('결과 파일 생성 실패')
+        after = set(os.listdir(app.config['RESULTS_FOLDER']))
+        new_files = [os.path.join(app.config['RESULTS_FOLDER'], f) for f in after - before]
+        for p in new_files:
+            record_result_file(step_id, p)
+        return {'files': [os.path.basename(p) for p in new_files]}
 
     time.sleep(2)
     return {'processed_records': 0}
@@ -763,7 +855,10 @@ def upload_file(file_type):
             return jsonify({'success': False, 'error': '파일이 선택되지 않았습니다'}), 400
         
         # 파일 저장
-        filename = secure_filename(file.filename)
+        original_name = secure_filename(file.filename)
+        ip = process_state.get('firewall_config', {}).get('primary_ip', 'unknown')
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{timestamp}_{ip}_{file_type}{os.path.splitext(original_name)[1]}"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
 

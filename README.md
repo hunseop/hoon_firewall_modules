@@ -289,6 +289,10 @@ pip install -r requirements.txt
 python app.py
 ```
 
+## 📚 문서
+
+단계별 파일 흐름과 사용법은 [docs/PROCESS_FLOW.md](docs/PROCESS_FLOW.md) 문서를 참고하세요.
+
 ## 📄 라이선스
 
 MIT License - 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
