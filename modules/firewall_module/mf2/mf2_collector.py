@@ -2,17 +2,47 @@
 import pandas as pd
 from typing import Optional
 from ..firewall_interface import FirewallInterface
-from .mf2_module import show_system_info, export_security_rules, download_object_files, host_parsing, network_parsing, combine_mask_end, delete_files, export_address_objects, service_parsing
+from ..exceptions import FirewallConnectionError
+from .mf2_module import (
+    show_system_info,
+    export_security_rules,
+    download_object_files,
+    host_parsing,
+    network_parsing,
+    combine_mask_end,
+    delete_files,
+    export_address_objects,
+    service_parsing,
+)
 import os
 
 class MF2Collector(FirewallInterface):
     def __init__(self, hostname: str, username: str, password: str):
+        super().__init__(hostname, username, password)
         self.device_ip = hostname
-        self.username = username
-        self.password = password
         module_dir = os.path.dirname(os.path.abspath(__file__))
         self.temp_dir = os.path.join(module_dir, 'temp')
         os.makedirs(self.temp_dir, exist_ok=True)
+
+    def connect(self) -> bool:
+        try:
+            show_system_info(self.device_ip, self.username, self._password)
+            self._connected = True
+            return True
+        except Exception as e:
+            self._connected = False
+            raise FirewallConnectionError(f"MF2 연결 실패: {e}") from e
+
+    def disconnect(self) -> bool:
+        self._connected = False
+        return True
+
+    def test_connection(self) -> bool:
+        try:
+            show_system_info(self.device_ip, self.username, self._password)
+            return True
+        except Exception:
+            return False
 
     def get_system_info(self) -> pd.DataFrame:
         # 기본 포트 22 사용

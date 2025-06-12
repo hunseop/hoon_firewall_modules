@@ -20,11 +20,11 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 try:
     from modules.firewall_module import (
         FirewallCollectorFactory,
-        export_policy_to_excel,
         FirewallError,
         FirewallConnectionError,
         setup_firewall_logger
     )
+    from modules.firewall_analyzer import RedundancyAnalyzer
     FIREWALL_MODULE_AVAILABLE = True
 except ImportError as e:
     print(f"방화벽 모듈 임포트 실패: {e}")
@@ -33,6 +33,11 @@ except ImportError as e:
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+if FIREWALL_MODULE_AVAILABLE:
+    redundancy_analyzer = RedundancyAnalyzer()
+else:
+    redundancy_analyzer = None
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'firewall-processor-simple'
@@ -252,76 +257,56 @@ def update_step_status(step_id, status, result=None, error=None):
     }
 
 def extract_firewall_policies():
-    """방화벽 정책 추출 (Primary + Secondary 자동 합치기)"""
+    """방화벽 정책 추출"""
     try:
         if FIREWALL_MODULE_AVAILABLE and 'firewall_collectors' in process_state:
             collectors = process_state['firewall_collectors']
-            all_policies = []
-            
+            policies = {}
+            results = []
+
             # Primary 장비에서 정책 추출
             add_log("Primary 방화벽에서 정책 데이터 추출 중...")
-            primary_policies = collectors['primary'].get_policies()
-            
-            if hasattr(primary_policies, 'to_dict'):
-                primary_df = primary_policies
-            else:
-                import pandas as pd
-                primary_df = pd.DataFrame(primary_policies)
-            
+            primary_df = collectors['primary'].export_security_rules()
+
             # 출처 표시를 위해 컬럼 추가
             primary_df['장비구분'] = 'Primary'
-            all_policies.append(primary_df)
+            policies['primary'] = primary_df
+            output_primary = os.path.join('results', 'firewall_policies_primary.xlsx')
+            os.makedirs('results', exist_ok=True)
+            primary_df.to_excel(output_primary, index=False)
             add_log(f"Primary 정책 추출 완료: {len(primary_df)}개")
+            results.append({
+                'target': 'primary',
+                'count': len(primary_df),
+                'file': 'firewall_policies_primary.xlsx',
+                'path': output_primary
+            })
             
             # Secondary 장비가 있는 경우 추출
             if 'secondary' in collectors:
                 try:
                     add_log("Secondary 방화벽에서 정책 데이터 추출 중...")
-                    secondary_policies = collectors['secondary'].get_policies()
-                    
-                    if hasattr(secondary_policies, 'to_dict'):
-                        secondary_df = secondary_policies
-                    else:
-                        import pandas as pd
-                        secondary_df = pd.DataFrame(secondary_policies)
-                    
+                    secondary_df = collectors['secondary'].export_security_rules()
+
                     secondary_df['장비구분'] = 'Secondary'
-                    all_policies.append(secondary_df)
+                    policies['secondary'] = secondary_df
+                    output_secondary = os.path.join('results', 'firewall_policies_secondary.xlsx')
+                    secondary_df.to_excel(output_secondary, index=False)
                     add_log(f"Secondary 정책 추출 완료: {len(secondary_df)}개")
+                    results.append({
+                        'target': 'secondary',
+                        'count': len(secondary_df),
+                        'file': 'firewall_policies_secondary.xlsx',
+                        'path': output_secondary
+                    })
                     
                 except Exception as e:
                     add_log(f"Secondary 정책 추출 실패 (무시하고 계속): {str(e)}", 'warning')
             
-            # 🔄 데이터 자동 합치기
-            import pandas as pd
-            if len(all_policies) > 1:
-                add_log("Primary와 Secondary 정책 데이터 합치는 중...")
-                combined_policies = pd.concat(all_policies, ignore_index=True)
-                add_log(f"데이터 합치기 완료: 총 {len(combined_policies)}개 정책")
-            else:
-                combined_policies = all_policies[0]
-            
-            # 중복 제거 (선택사항)
-            original_count = len(combined_policies)
-            combined_policies = combined_policies.drop_duplicates()
-            duplicate_removed = original_count - len(combined_policies)
-            if duplicate_removed > 0:
-                add_log(f"중복 정책 {duplicate_removed}개 제거됨")
-            
-            # Excel 파일로 저장
-            output_file = os.path.join('results', 'firewall_policies.xlsx')
-            os.makedirs('results', exist_ok=True)
-            combined_policies.to_excel(output_file, index=False)
-            
-            add_log(f"정책 추출 완료: 총 {len(combined_policies)}개 정책")
-            
+            process_state['policies'] = policies
+
             return {
-                'policies_count': len(combined_policies),
-                'primary_count': len(all_policies[0]),
-                'secondary_count': len(all_policies[1]) if len(all_policies) > 1 else 0,
-                'duplicate_removed': duplicate_removed,
-                'file': 'firewall_policies.xlsx',
-                'path': output_file
+                'policies': results
             }
             
         else:
@@ -329,11 +314,10 @@ def extract_firewall_policies():
             add_log("시뮬레이션 모드: 정책 추출 중...")
             time.sleep(3)
             return {
-                'policies_count': 1250,
-                'primary_count': 800,
-                'secondary_count': 450,
-                'duplicate_removed': 0,
-                'file': 'firewall_policies.xlsx'
+                'policies': [
+                    {'target': 'primary', 'count': 800, 'file': 'firewall_policies_primary.xlsx'},
+                    {'target': 'secondary', 'count': 450, 'file': 'firewall_policies_secondary.xlsx'}
+                ]
             }
             
     except Exception as e:
@@ -341,79 +325,54 @@ def extract_firewall_policies():
         raise
 
 def extract_firewall_usage():
-    """방화벽 사용이력 추출 (Primary + Secondary 자동 합치기)"""
+    """방화벽 사용이력 추출"""
     try:
         if FIREWALL_MODULE_AVAILABLE and 'firewall_collectors' in process_state:
             collectors = process_state['firewall_collectors']
-            all_usage = []
+            usage = {}
+            results = []
             
             # Primary 장비에서 사용이력 추출
             add_log("Primary 방화벽에서 사용이력 데이터 추출 중...")
-            primary_usage = collectors['primary'].get_usage_statistics()
-            
-            if hasattr(primary_usage, 'to_dict'):
-                primary_df = primary_usage
-            else:
-                import pandas as pd
-                primary_df = pd.DataFrame(primary_usage)
-            
+            primary_df = collectors['primary'].export_usage_logs()
+
             primary_df['장비구분'] = 'Primary'
-            all_usage.append(primary_df)
+            usage['primary'] = primary_df
+            output_primary = os.path.join('results', 'usage_history_primary.xlsx')
+            primary_df.to_excel(output_primary, index=False)
             add_log(f"Primary 사용이력 추출 완료: {len(primary_df)}개")
+            results.append({
+                'target': 'primary',
+                'count': len(primary_df),
+                'file': 'usage_history_primary.xlsx',
+                'path': output_primary
+            })
             
             # Secondary 장비가 있는 경우 추출
             if 'secondary' in collectors:
                 try:
                     add_log("Secondary 방화벽에서 사용이력 데이터 추출 중...")
-                    secondary_usage = collectors['secondary'].get_usage_statistics()
-                    
-                    if hasattr(secondary_usage, 'to_dict'):
-                        secondary_df = secondary_usage
-                    else:
-                        import pandas as pd
-                        secondary_df = pd.DataFrame(secondary_usage)
-                    
+                    secondary_df = collectors['secondary'].export_usage_logs()
+
                     secondary_df['장비구분'] = 'Secondary'
-                    all_usage.append(secondary_df)
+                    usage['secondary'] = secondary_df
+                    output_secondary = os.path.join('results', 'usage_history_secondary.xlsx')
+                    secondary_df.to_excel(output_secondary, index=False)
                     add_log(f"Secondary 사용이력 추출 완료: {len(secondary_df)}개")
+                    results.append({
+                        'target': 'secondary',
+                        'count': len(secondary_df),
+                        'file': 'usage_history_secondary.xlsx',
+                        'path': output_secondary
+                    })
                     
                 except Exception as e:
                     add_log(f"Secondary 사용이력 추출 실패 (무시하고 계속): {str(e)}", 'warning')
             
-            # 🔄 데이터 자동 합치기
-            import pandas as pd
-            if len(all_usage) > 1:
-                add_log("Primary와 Secondary 사용이력 데이터 합치는 중...")
-                combined_usage = pd.concat(all_usage, ignore_index=True)
-                add_log(f"사용이력 데이터 합치기 완료: 총 {len(combined_usage)}개")
-            else:
-                combined_usage = all_usage[0]
-            
-            # 중복 제거 및 정렬
-            original_count = len(combined_usage)
-            if 'timestamp' in combined_usage.columns or 'date' in combined_usage.columns:
-                # 시간 기준으로 정렬
-                time_col = 'timestamp' if 'timestamp' in combined_usage.columns else 'date'
-                combined_usage = combined_usage.sort_values(time_col)
-                
-            combined_usage = combined_usage.drop_duplicates()
-            duplicate_removed = original_count - len(combined_usage)
-            if duplicate_removed > 0:
-                add_log(f"중복 사용이력 {duplicate_removed}개 제거됨")
-            
-            # Excel 파일로 저장
-            output_file = os.path.join('results', 'usage_history.xlsx')
-            combined_usage.to_excel(output_file, index=False)
-            
-            add_log(f"사용이력 추출 완료: 총 {len(combined_usage)}개 레코드")
-            
+            process_state['usage'] = usage
+
             return {
-                'usage_records': len(combined_usage),
-                'primary_count': len(all_usage[0]),
-                'secondary_count': len(all_usage[1]) if len(all_usage) > 1 else 0,
-                'duplicate_removed': duplicate_removed,
-                'file': 'usage_history.xlsx',
-                'path': output_file
+                'usage': results
             }
             
         else:
@@ -421,11 +380,10 @@ def extract_firewall_usage():
             add_log("시뮬레이션 모드: 사용이력 추출 중...")
             time.sleep(2)
             return {
-                'usage_records': 8500,
-                'primary_count': 5000,
-                'secondary_count': 3500,
-                'duplicate_removed': 0,
-                'file': 'usage_history.xlsx'
+                'usage': [
+                    {'target': 'primary', 'count': 5000, 'file': 'usage_history_primary.xlsx'},
+                    {'target': 'secondary', 'count': 3500, 'file': 'usage_history_secondary.xlsx'}
+                ]
             }
             
     except Exception as e:
@@ -435,37 +393,49 @@ def extract_firewall_usage():
 def extract_duplicate_policies():
     """중복 정책 추출"""
     try:
-        if FIREWALL_MODULE_AVAILABLE and 'firewall_collector' in process_state:
-            collector = process_state['firewall_collector']
-            
+        if FIREWALL_MODULE_AVAILABLE and 'firewall_collectors' in process_state:
+            collectors = process_state['firewall_collectors']
+
             add_log("방화벽에서 중복 정책 분석 중...")
-            
-            # 실제 방화벽에서 중복 정책 분석
-            if hasattr(collector, 'get_duplicate_policies'):
-                duplicate_data = collector.get_duplicate_policies()
-            else:
-                # 중복 정책 분석 기능이 없는 경우 정책을 가져와서 직접 분석
-                policies = collector.get_policies()
-                duplicate_data = analyze_duplicate_policies(policies)
-            
-            # 데이터를 Excel 파일로 저장
-            output_file = os.path.join('results', 'duplicate_policies.xlsx')
-            
-            if hasattr(duplicate_data, 'to_excel'):
-                duplicate_data.to_excel(output_file, index=False)
-                duplicate_count = len(duplicate_data)
-            else:
-                import pandas as pd
-                df = pd.DataFrame(duplicate_data)
-                df.to_excel(output_file, index=False)
-                duplicate_count = len(df)
-            
-            add_log(f"중복 정책 분석 완료: {duplicate_count}개 중복 정책")
-            
+
+            policies = process_state.get('policies')
+            if not policies:
+                policies = {}
+                if 'primary' in collectors:
+                    policies['primary'] = collectors['primary'].export_security_rules()
+                if 'secondary' in collectors:
+                    try:
+                        policies['secondary'] = collectors['secondary'].export_security_rules()
+                    except Exception as e:
+                        add_log(f"Secondary 정책 추출 실패 (무시하고 계속): {str(e)}", 'warning')
+                process_state['policies'] = policies
+
+            vendor = process_state.get('firewall_config', {}).get('vendor', 'paloalto')
+
+            results = []
+
+            for label, df in policies.items():
+                if redundancy_analyzer:
+                    duplicate_df = redundancy_analyzer.analyze(df, vendor=vendor)
+                else:
+                    duplicate_df = analyze_duplicate_policies(df)
+
+                output_file = os.path.join('results', f'duplicate_policies_{label}.xlsx')
+                duplicate_df.to_excel(output_file, index=False)
+
+                results.append({
+                    'target': label,
+                    'count': len(duplicate_df),
+                    'file': f'duplicate_policies_{label}.xlsx',
+                    'path': output_file
+                })
+
+            total_count = sum(r['count'] for r in results)
+
+            add_log(f"중복 정책 분석 완료: {total_count}개 중복 정책")
+
             return {
-                'duplicate_policies': duplicate_count,
-                'file': 'duplicate_policies.xlsx',
-                'path': output_file
+                'duplicate_policies': results
             }
             
         else:
@@ -480,7 +450,6 @@ def extract_duplicate_policies():
 
 def analyze_duplicate_policies(policies):
     """정책 데이터에서 중복 정책 분석 (간단한 구현)"""
-    import pandas as pd
     
     if not hasattr(policies, 'columns'):
         policies = pd.DataFrame(policies)

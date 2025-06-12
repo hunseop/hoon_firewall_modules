@@ -10,7 +10,19 @@ class MockCollector(FirewallInterface):
     """테스트용 가상 방화벽 Collector"""
     
     def __init__(self, hostname: str, username: str, password: str):
+        super().__init__(hostname, username, password)
         self.client = MockFirewall(hostname, username, password)
+
+    def connect(self) -> bool:
+        self._connected = True
+        return True
+
+    def disconnect(self) -> bool:
+        self._connected = False
+        return True
+
+    def test_connection(self) -> bool:
+        return True
     
     def export_security_rules(self):
         """보안 규칙 내보내기"""

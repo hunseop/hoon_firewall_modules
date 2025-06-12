@@ -4,9 +4,36 @@ from typing import Optional
 from ..firewall_interface import FirewallInterface
 from .paloalto_module import PaloAltoAPI
 
+from ..exceptions import FirewallConnectionError
+
+
 class PaloAltoCollector(FirewallInterface):
     def __init__(self, hostname: str, username: str, password: str):
+        super().__init__(hostname, username, password)
         self.api = PaloAltoAPI(hostname, username, password)
+
+    def connect(self) -> bool:
+        """방화벽 연결 테스트 및 상태 갱신"""
+        try:
+            self.api.get_system_info()
+            self._connected = True
+            return True
+        except Exception as e:
+            self._connected = False
+            raise FirewallConnectionError(f"PaloAlto 연결 실패: {e}") from e
+
+    def disconnect(self) -> bool:
+        """연결 해제"""
+        self._connected = False
+        return True
+
+    def test_connection(self) -> bool:
+        """연결 가능 여부 확인"""
+        try:
+            self.api.get_system_info()
+            return True
+        except Exception:
+            return False
 
     def get_system_info(self) -> pd.DataFrame:
         """시스템 정보를 반환합니다."""
