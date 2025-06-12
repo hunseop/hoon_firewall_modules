@@ -474,11 +474,32 @@ def index():
 @app.route('/api/status')
 def get_status():
     """현재 상태 반환"""
+    # JSON 직렬화가 가능한 형태로 상태 정보를 변환
+    def serialize_state(state):
+        serialized = {}
+        for key, value in state.items():
+            if key in {'firewall_collectors'}:
+                # 객체 정보는 문자열로 대체
+                serialized[key] = 'initialized' if value else None
+            elif key in {'policies', 'usage'} and isinstance(value, dict):
+                # 데이터프레임은 개수만 전달
+                summary = {}
+                for label, df in value.items():
+                    try:
+                        summary[label] = len(df)
+                    except Exception:
+                        summary[label] = 0
+                serialized[key] = summary
+            else:
+                # 기본적으로 JSON 변환 가능한 값 사용
+                serialized[key] = value
+        return serialized
+
     return jsonify({
         'success': True,
         'phases': PROCESS_PHASES,
         'state': {
-            **process_state,
+            **serialize_state(process_state),
             'manual_mode': process_state.get('manual_mode', False),
             'paused': process_state.get('paused', False)
         }
