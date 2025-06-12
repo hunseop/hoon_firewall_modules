@@ -331,11 +331,20 @@ class FirewallProcessApp {
             `;
         }
         
-        // 미리보기 버튼 (파일 업로드 단계)
+        // 미리보기/다운로드 버튼 (업로드 단계)
         if (step.file_type && stepStatus === 'completed') {
             actions += `
                 <button class="btn btn-info btn-sm" onclick="app.previewFile('${step.file_type}')" title="파일 미리보기">
                     <i class="fas fa-eye"></i> 미리보기
+                </button>
+                <button class="btn btn-secondary btn-sm ms-2" onclick="app.downloadFile('${step.file_type}')" title="파일 다운로드">
+                    <i class="fas fa-download"></i> 다운로드
+                </button>
+            `;
+        } else if (stepStatus === 'completed' && this.hasResultFile(step.id)) {
+            actions += `
+                <button class="btn btn-secondary btn-sm" onclick="app.downloadStepFile('${step.id}')" title="파일 다운로드">
+                    <i class="fas fa-download"></i> 다운로드
                 </button>
             `;
         }
@@ -371,6 +380,18 @@ class FirewallProcessApp {
         const stepData = this.currentState.steps[stepId];
         if (!stepData) return 'pending';
         return stepData.status;
+    }
+
+    hasResultFile(stepId) {
+        const stepData = this.currentState.steps[stepId];
+        if (!stepData || stepData.status !== 'completed') return false;
+        const r = stepData.result || {};
+        if (r.file) return true;
+        if (Array.isArray(r.files) && r.files.length) return true;
+        if (Array.isArray(r.policies) && r.policies.length) return true;
+        if (Array.isArray(r.usage) && r.usage.length) return true;
+        if (Array.isArray(r.duplicate_policies) && r.duplicate_policies.length) return true;
+        return false;
     }
 
     calculatePhaseStatus(steps) {
@@ -547,9 +568,19 @@ class FirewallProcessApp {
     openFileUpload(fileType, stepName) {
         this.currentFileType = fileType;
         document.getElementById('file-upload-title').textContent = stepName;
-        document.getElementById('file-input').value = '';
+        const input = document.getElementById('file-input');
+        input.value = '';
         document.getElementById('upload-file-btn').disabled = true;
-        
+        const help = document.getElementById('file-upload-help');
+
+        if (fileType === 'mis_id') {
+            input.accept = '.csv';
+            help.innerHTML = '<i class="fas fa-info-circle"></i> CSV 파일(.csv)만 업로드 가능합니다.';
+        } else {
+            input.accept = '.xlsx,.xls';
+            help.innerHTML = '<i class="fas fa-info-circle"></i> Excel 파일(.xlsx, .xls)만 업로드 가능합니다.';
+        }
+
         const modal = new bootstrap.Modal(document.getElementById('file-upload-modal'));
         modal.show();
     }
@@ -819,6 +850,14 @@ class FirewallProcessApp {
         };
         
         input.click();
+    }
+
+    async downloadFile(fileType) {
+        window.location.href = `/api/file/download/${fileType}`;
+    }
+
+    async downloadStepFile(stepId) {
+        window.location.href = `/api/step/download/${stepId}/0`;
     }
     
     updateManualModeButton() {

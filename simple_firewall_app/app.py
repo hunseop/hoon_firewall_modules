@@ -10,6 +10,10 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, send_file
+from types import SimpleNamespace
+
+from modules.policy_deletion_processor.utils.file_manager import FileManager
+from modules.policy_deletion_processor.processors import MisIdAdder, PolicyUsageProcessor, RequestParser
 from werkzeug.utils import secure_filename
 import pandas as pd
 
@@ -256,6 +260,14 @@ def update_step_status(step_id, status, result=None, error=None):
         'timestamp': datetime.now().isoformat()
     }
 
+def record_result_file(step_id, filepath):
+    """단계 결과 파일 기록"""
+    process_state['files'][step_id] = {
+        'filename': os.path.basename(filepath),
+        'filepath': filepath,
+        'upload_time': datetime.now().isoformat()
+    }
+
 def extract_firewall_policies():
     """방화벽 정책 추출"""
     try:
@@ -304,6 +316,9 @@ def extract_firewall_policies():
                     add_log(f"Secondary 정책 추출 실패 (무시하고 계속): {str(e)}", 'warning')
             
             process_state['policies'] = policies
+
+            if results:
+                record_result_file('extract_policies', results[0]['path'])
 
             return {
                 'policies': results
@@ -370,6 +385,8 @@ def extract_firewall_usage():
                     add_log(f"Secondary 사용이력 추출 실패 (무시하고 계속): {str(e)}", 'warning')
             
             process_state['usage'] = usage
+            if results:
+                record_result_file('extract_usage', results[0]['path'])
 
             return {
                 'usage': results
@@ -434,6 +451,9 @@ def extract_duplicate_policies():
 
             add_log(f"중복 정책 분석 완료: {total_count}개 중복 정책")
 
+            if results:
+                record_result_file('extract_duplicates', results[0]['path'])
+
             return {
                 'duplicate_policies': results
             }
@@ -465,6 +485,74 @@ def analyze_duplicate_policies(policies):
         duplicates = policies[policies.duplicated(keep=False)]
     
     return duplicates
+
+def run_policy_processor(step_id):
+    """policy_deletion_processor 모듈을 이용한 간단 처리"""
+    class DummyConfig:
+        def get(self, key, default=None):
+            return default
+
+    def prepare_file_manager(file_list):
+        cfg = DummyConfig()
+        fm = FileManager(cfg)
+        paths = iter(file_list)
+        fm.select_files = lambda extension=None: next(paths, None)
+        return fm
+
+    if step_id == 'parse_descriptions':
+        policy_path = os.path.join(app.config['RESULTS_FOLDER'], 'firewall_policies_primary.xlsx')
+        fm = prepare_file_manager([policy_path])
+        processor = RequestParser(fm.config)
+        captured = {}
+        original_update = fm.update_version
+        def updater(name, final_version=False):
+            new_name = original_update(name, final_version)
+            captured['output'] = new_name
+            return new_name
+        fm.update_version = updater
+        if not processor.parse_request_type(fm):
+            raise Exception('신청 정보 파싱 실패')
+        record_result_file(step_id, captured.get('output'))
+        return {'file': os.path.basename(captured.get('output'))}
+
+    if step_id == 'add_mis_info':
+        mis_path = process_state.get('files', {}).get('mis_id', {}).get('filepath')
+        policy_path = os.path.join(app.config['RESULTS_FOLDER'], 'firewall_policies_primary.xlsx')
+        fm = prepare_file_manager([policy_path, mis_path])
+        processor = MisIdAdder(fm.config)
+        captured = {}
+        original_update = fm.update_version
+        def updater(name, final_version=False):
+            new_name = original_update(name, final_version)
+            captured['output'] = new_name
+            return new_name
+        fm.update_version = updater
+        if not processor.add_mis_id(fm):
+            raise Exception('MIS ID 추가 실패')
+        record_result_file('add_mis_info', captured.get('output'))
+        process_state['files']['policy_with_mis'] = captured.get('output')
+        return {'file': os.path.basename(captured.get('output'))}
+
+    if step_id == 'add_usage_info':
+        usage_path = os.path.join(app.config['RESULTS_FOLDER'], 'usage_history_primary.xlsx')
+        policy_path = process_state.get('files', {}).get('policy_with_mis')
+        fm = prepare_file_manager([policy_path, usage_path])
+        processor = PolicyUsageProcessor(fm.config)
+        captured = {}
+        original_update = fm.update_version
+        def updater(name, final_version=False):
+            new_name = original_update(name, final_version)
+            captured['output'] = new_name
+            return new_name
+        fm.update_version = updater
+        if not processor.add_usage_status(fm):
+            raise Exception('사용 정보 추가 실패')
+        record_result_file('add_usage_info', captured.get('output'))
+        process_state['files']['policy_with_usage'] = captured.get('output')
+        return {'file': os.path.basename(captured.get('output'))}
+
+    time.sleep(2)
+    return {'processed_records': 0}
 
 @app.route('/')
 def index():
@@ -617,19 +705,21 @@ def execute_step(step_id):
             
         elif step_id == 'parse_descriptions':
             add_log("Description 파싱 중...")
-            time.sleep(2)
-            result = {'parsed_requests': 1200, 'missing_descriptions': 50}
+            result = run_policy_processor(step_id)
             
         elif step_id == 'validate_files':
             add_log("파일 유효성 검사 중...")
             time.sleep(1)
             result = {'valid_files': 2, 'warnings': 3}
             
-        elif step_id in ['add_mis_info', 'merge_application_info', 'vendor_exception_handling', 
+        elif step_id in ['add_mis_info', 'merge_application_info', 'vendor_exception_handling',
                         'classify_duplicates', 'add_usage_info', 'finalize_classification']:
             add_log(f"{step_id} 처리 중...")
-            time.sleep(2)
-            result = {'processed_records': 1250}
+            try:
+                result = run_policy_processor(step_id)
+            except Exception as e:
+                add_log(f"{step_id} 처리 실패: {str(e)}", 'error')
+                raise
             
         elif step_id == 'generate_results':
             add_log("최종 결과 파일 생성 중...")
@@ -676,14 +766,24 @@ def upload_file(file_type):
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        
+
         # 파일 정보 저장
         process_state['files'][file_type] = {
             'filename': filename,
             'filepath': filepath,
             'upload_time': datetime.now().isoformat()
         }
-        
+
+        step_map = {
+            'application': 'upload_application_file',
+            'mis_id': 'upload_mis_file'
+        }
+
+        step_id = step_map.get(file_type)
+        if step_id:
+            update_step_status(step_id, 'completed', {'file': filename})
+            record_result_file(step_id, filepath)
+
         add_log(f"{file_type} 파일 업로드 완료: {filename}")
         
         return jsonify({
@@ -708,14 +808,19 @@ def preview_file(file_type):
         
         filepath = process_state['files'][file_type]['filepath']
         
-        # Excel 파일 읽기
-        df = pd.read_excel(filepath, nrows=10)  # 처음 10행만
+        ext = os.path.splitext(filepath)[1].lower()
+        if ext == '.csv':
+            df = pd.read_csv(filepath, nrows=10)
+            total_rows = len(pd.read_csv(filepath))
+        else:
+            df = pd.read_excel(filepath, nrows=10)
+            total_rows = len(pd.read_excel(filepath))
         
         return jsonify({
             'success': True,
             'columns': df.columns.tolist(),
             'data': df.to_dict('records'),
-            'total_rows': len(pd.read_excel(filepath))
+            'total_rows': total_rows
         })
         
     except Exception as e:
@@ -723,6 +828,57 @@ def preview_file(file_type):
             'success': False,
             'error': str(e)
         }), 500
+
+
+@app.route('/api/file/download/<file_type>')
+def download_file(file_type):
+    """업로드된 파일 다운로드"""
+    try:
+        if file_type not in process_state['files']:
+            return jsonify({'success': False, 'error': '파일이 없습니다'}), 404
+
+        filepath = process_state['files'][file_type]['filepath']
+        return send_file(filepath, as_attachment=True)
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/step/download/<step_id>/<int:index>')
+def download_step_file(step_id, index=0):
+    """단계 결과 파일 다운로드"""
+    try:
+        step = process_state['steps'].get(step_id)
+        if not step or step.get('status') != 'completed':
+            return jsonify({'success': False, 'error': '파일이 없습니다'}), 404
+
+        def gather_paths(data):
+            paths = []
+            if isinstance(data, dict):
+                if 'path' in data and os.path.exists(data['path']):
+                    paths.append(data['path'])
+                if 'file' in data and os.path.exists(os.path.join(app.config['RESULTS_FOLDER'], data['file'])):
+                    paths.append(os.path.join(app.config['RESULTS_FOLDER'], data['file']))
+                for v in data.values():
+                    paths.extend(gather_paths(v))
+            elif isinstance(data, list):
+                for item in data:
+                    paths.extend(gather_paths(item))
+            elif isinstance(data, str) and os.path.exists(data):
+                paths.append(data)
+            return paths
+
+        paths = gather_paths(step.get('result'))
+        if not paths or index >= len(paths):
+            return jsonify({'success': False, 'error': '파일이 없습니다'}), 404
+
+        return send_file(paths[index], as_attachment=True)
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/reset', methods=['POST'])
 def reset_process():
