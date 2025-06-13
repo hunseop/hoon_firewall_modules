@@ -118,10 +118,34 @@ class FirewallProcessApp {
     }
 
     startStatusUpdates() {
-        // 1초마다 상태 업데이트
-        this.statusUpdateInterval = setInterval(() => {
-            this.loadInitialStatus();
-        }, 1000);
+        if (window.EventSource) {
+            this.statusSource = new EventSource('/api/status/stream');
+            this.statusSource.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+
+                const isFirstLoad = !this.phases || Object.keys(this.phases).length === 0;
+                const hasStateChanged = this.hasStateChanged(data.state);
+                const hasLogsChanged = this.hasLogsChanged(data.state.logs);
+
+                this.phases = data.phases;
+                this.currentState = data.state;
+
+                if (isFirstLoad) {
+                    this.renderPhases();
+                } else {
+                    if (hasStateChanged) this.updateStepsOnly();
+                    if (hasLogsChanged) this.updateLogs();
+                }
+
+                this.updateControlButtons();
+                this.updateCurrentStatus();
+            };
+        } else {
+            // 폴백: 3초마다 폴링
+            this.statusUpdateInterval = setInterval(() => {
+                this.loadInitialStatus();
+            }, 3000);
+        }
     }
 
     renderPhases() {

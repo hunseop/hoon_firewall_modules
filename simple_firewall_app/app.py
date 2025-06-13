@@ -9,7 +9,7 @@ import time
 import logging
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, Response
 from types import SimpleNamespace
 
 from modules.policy_deletion_processor.utils.file_manager import FileManager
@@ -54,13 +54,16 @@ else:
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'firewall-processor-simple'
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['RESULTS_FOLDER'] = 'results'
+
+# 절대 경로로 저장해 경로 문제 방지
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'uploads')
+app.config['RESULTS_FOLDER'] = os.path.join(BASE_DIR, 'results')
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
 
 # 디렉토리 생성
-os.makedirs('uploads', exist_ok=True)
-os.makedirs('results', exist_ok=True)
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['RESULTS_FOLDER'], exist_ok=True)
 
 # 전역 상태 관리
 process_state = {
@@ -327,6 +330,24 @@ def rename_and_record(step_id, src_path, label=None):
     os.replace(src_path, dest)
     record_result_file(step_id, dest)
     return dest
+
+def serialize_state(state):
+    """JSON 직렬화 가능한 상태 정보 생성"""
+    serialized = {}
+    for key, value in state.items():
+        if key in {'firewall_collectors'}:
+            serialized[key] = 'initialized' if value else None
+        elif key in {'policies', 'usage', 'duplicates'} and isinstance(value, dict):
+            summary = {}
+            for label, df in value.items():
+                try:
+                    summary[label] = len(df)
+                except Exception:
+                    summary[label] = 0
+            serialized[key] = summary
+        else:
+            serialized[key] = value
+    return serialized
 
 def extract_firewall_policies():
     """방화벽 정책 추출"""
@@ -733,27 +754,6 @@ def index():
 @app.route('/api/status')
 def get_status():
     """현재 상태 반환"""
-    # JSON 직렬화가 가능한 형태로 상태 정보를 변환
-    def serialize_state(state):
-        serialized = {}
-        for key, value in state.items():
-            if key in {'firewall_collectors'}:
-                # 객체 정보는 문자열로 대체
-                serialized[key] = 'initialized' if value else None
-            elif key in {'policies', 'usage', 'duplicates'} and isinstance(value, dict):
-                # 데이터프레임은 개수만 전달
-                summary = {}
-                for label, df in value.items():
-                    try:
-                        summary[label] = len(df)
-                    except Exception:
-                        summary[label] = 0
-                serialized[key] = summary
-            else:
-                # 기본적으로 JSON 변환 가능한 값 사용
-                serialized[key] = value
-        return serialized
-
     return jsonify({
         'success': True,
         'phases': PROCESS_PHASES,
@@ -763,6 +763,27 @@ def get_status():
             'paused': process_state.get('paused', False)
         }
     })
+
+@app.route('/api/status/stream')
+def stream_status():
+    """SSE 방식의 상태 스트림"""
+    def event_stream():
+        last = None
+        while True:
+            payload = json.dumps({
+                'phases': PROCESS_PHASES,
+                'state': {
+                    **serialize_state(process_state),
+                    'manual_mode': process_state.get('manual_mode', False),
+                    'paused': process_state.get('paused', False)
+                }
+            })
+            if payload != last:
+                yield f"data: {payload}\n\n"
+                last = payload
+            time.sleep(1)
+
+    return Response(event_stream(), mimetype='text/event-stream')
 
 @app.route('/api/firewall/config', methods=['POST'])
 def set_firewall_config():
