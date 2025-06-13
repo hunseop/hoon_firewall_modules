@@ -118,10 +118,10 @@ class FirewallProcessApp {
     }
 
     startStatusUpdates() {
-        // 5초마다 상태 업데이트
+        // 1초마다 상태 업데이트
         this.statusUpdateInterval = setInterval(() => {
             this.loadInitialStatus();
-        }, 5000); // 5초로 늘림
+        }, 1000);
     }
 
     renderPhases() {
@@ -614,6 +614,7 @@ class FirewallProcessApp {
             
             if (result.success) {
                 bootstrap.Modal.getInstance(document.getElementById('file-upload-modal')).hide();
+                await this.loadInitialStatus();
                 this.autoExecuteNextSteps();
             } else {
                 alert('업로드 오류: ' + result.error);
@@ -633,6 +634,7 @@ class FirewallProcessApp {
             
             if (result.success) {
                 // 자동으로 다음 단계들 실행
+                await this.loadInitialStatus();
                 setTimeout(() => {
                     this.autoExecuteNextSteps();
                 }, 1000);

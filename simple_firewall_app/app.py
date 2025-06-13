@@ -740,7 +740,7 @@ def get_status():
             if key in {'firewall_collectors'}:
                 # 객체 정보는 문자열로 대체
                 serialized[key] = 'initialized' if value else None
-            elif key in {'policies', 'usage'} and isinstance(value, dict):
+            elif key in {'policies', 'usage', 'duplicates'} and isinstance(value, dict):
                 # 데이터프레임은 개수만 전달
                 summary = {}
                 for label, df in value.items():
