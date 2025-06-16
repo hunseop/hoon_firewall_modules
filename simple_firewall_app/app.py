@@ -9,7 +9,20 @@ import time
 import logging
 from datetime import datetime
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, Response
+from types import SimpleNamespace
+
+from modules.policy_deletion_processor.utils.file_manager import FileManager
+from modules.policy_deletion_processor.utils.excel_manager import ExcelManager
+from modules.policy_deletion_processor.processors import (
+    MisIdAdder,
+    PolicyUsageProcessor,
+    RequestParser,
+    RequestInfoAdder,
+    ExceptionHandler,
+    DuplicatePolicyClassifier,
+    NotificationClassifier,
+)
 from werkzeug.utils import secure_filename
 import pandas as pd
 
@@ -41,13 +54,16 @@ else:
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'firewall-processor-simple'
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['RESULTS_FOLDER'] = 'results'
+
+# 절대 경로로 저장해 경로 문제 방지
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'uploads')
+app.config['RESULTS_FOLDER'] = os.path.join(BASE_DIR, 'results')
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
 
 # 디렉토리 생성
-os.makedirs('uploads', exist_ok=True)
-os.makedirs('results', exist_ok=True)
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['RESULTS_FOLDER'], exist_ok=True)
 
 # 전역 상태 관리
 process_state = {
@@ -83,6 +99,17 @@ PROCESS_PHASES = {
         'name': 'Phase 2: 데이터 수집',
         'steps': [
             {
+                'id': 'upload_policies_file',
+                'name': '정책 파일 업로드',
+                'description': '추출된 정책 파일을 업로드하세요',
+                'requires_user_input': True,
+                'auto_proceed': False,
+                'file_type': 'policies',
+                'allow_manual': True,
+                'allow_pause': True,
+                'allow_replace': True
+            },
+            {
                 'id': 'extract_policies',
                 'name': '방화벽 정책 추출',
                 'description': '방화벽에서 정책 데이터 추출',
@@ -92,6 +119,17 @@ PROCESS_PHASES = {
                 'allow_pause': True
             },
             {
+                'id': 'upload_usage_file',
+                'name': '사용이력 파일 업로드',
+                'description': '추출된 사용이력 파일을 업로드하세요',
+                'requires_user_input': True,
+                'auto_proceed': False,
+                'file_type': 'usage',
+                'allow_manual': True,
+                'allow_pause': True,
+                'allow_replace': True
+            },
+            {
                 'id': 'extract_usage',
                 'name': '방화벽 사용이력 추출',
                 'description': '방화벽에서 사용이력 데이터 추출',
@@ -99,6 +137,17 @@ PROCESS_PHASES = {
                 'auto_proceed': True,
                 'allow_manual': True,
                 'allow_pause': True
+            },
+            {
+                'id': 'upload_duplicates_file',
+                'name': '중복정책 파일 업로드',
+                'description': '추출된 중복 정책 파일을 업로드하세요',
+                'requires_user_input': True,
+                'auto_proceed': False,
+                'file_type': 'duplicates',
+                'allow_manual': True,
+                'allow_pause': True,
+                'allow_replace': True
             },
             {
                 'id': 'extract_duplicates',
@@ -256,9 +305,69 @@ def update_step_status(step_id, status, result=None, error=None):
         'timestamp': datetime.now().isoformat()
     }
 
+def record_result_file(step_id, filepath):
+    """단계 결과 파일 기록"""
+    process_state['files'][step_id] = {
+        'filename': os.path.basename(filepath),
+        'filepath': filepath,
+        'upload_time': datetime.now().isoformat()
+    }
+
+def generate_result_path(step_id, label=None, ext='xlsx'):
+    """단계별 결과 파일명을 생성"""
+    ip = process_state.get('firewall_config', {}).get('primary_ip', 'unknown')
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    parts = [timestamp, ip, step_id]
+    if label:
+        parts.append(label)
+    filename = f"{'_'.join(parts)}.{ext}"
+    return os.path.join(app.config['RESULTS_FOLDER'], filename)
+
+def rename_and_record(step_id, src_path, label=None):
+    ext = os.path.splitext(src_path)[1].lstrip('.')
+    dest = generate_result_path(step_id if label is None else f"{step_id}_{label}", None, ext)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    os.replace(src_path, dest)
+    record_result_file(step_id, dest)
+    return dest
+
+def serialize_state(state):
+    """JSON 직렬화 가능한 상태 정보 생성"""
+    serialized = {}
+    for key, value in state.items():
+        if key in {'firewall_collectors'}:
+            serialized[key] = 'initialized' if value else None
+        elif key in {'policies', 'usage', 'duplicates'} and isinstance(value, dict):
+            summary = {}
+            for label, df in value.items():
+                try:
+                    summary[label] = len(df)
+                except Exception:
+                    summary[label] = 0
+            serialized[key] = summary
+        else:
+            serialized[key] = value
+    return serialized
+
 def extract_firewall_policies():
     """방화벽 정책 추출"""
     try:
+        # 업로드된 파일이 있으면 그대로 사용
+        if 'policies' in process_state.get('files', {}):
+            path = process_state['files']['policies']['filepath']
+            add_log("업로드된 정책 파일을 사용합니다")
+            df = pd.read_excel(path)
+            process_state['policies'] = {'uploaded': df}
+            record_result_file('extract_policies', path)
+            return {
+                'policies': [{
+                    'target': 'uploaded',
+                    'count': len(df),
+                    'file': os.path.basename(path),
+                    'path': path
+                }]
+            }
+
         if FIREWALL_MODULE_AVAILABLE and 'firewall_collectors' in process_state:
             collectors = process_state['firewall_collectors']
             policies = {}
@@ -271,14 +380,14 @@ def extract_firewall_policies():
             # 출처 표시를 위해 컬럼 추가
             primary_df['장비구분'] = 'Primary'
             policies['primary'] = primary_df
-            output_primary = os.path.join('results', 'firewall_policies_primary.xlsx')
-            os.makedirs('results', exist_ok=True)
+            output_primary = generate_result_path('extract_policies', 'primary')
+            os.makedirs(os.path.dirname(output_primary), exist_ok=True)
             primary_df.to_excel(output_primary, index=False)
             add_log(f"Primary 정책 추출 완료: {len(primary_df)}개")
             results.append({
                 'target': 'primary',
                 'count': len(primary_df),
-                'file': 'firewall_policies_primary.xlsx',
+                'file': os.path.basename(output_primary),
                 'path': output_primary
             })
             
@@ -290,13 +399,13 @@ def extract_firewall_policies():
 
                     secondary_df['장비구분'] = 'Secondary'
                     policies['secondary'] = secondary_df
-                    output_secondary = os.path.join('results', 'firewall_policies_secondary.xlsx')
+                    output_secondary = generate_result_path('extract_policies', 'secondary')
                     secondary_df.to_excel(output_secondary, index=False)
                     add_log(f"Secondary 정책 추출 완료: {len(secondary_df)}개")
                     results.append({
                         'target': 'secondary',
                         'count': len(secondary_df),
-                        'file': 'firewall_policies_secondary.xlsx',
+                        'file': os.path.basename(output_secondary),
                         'path': output_secondary
                     })
                     
@@ -304,6 +413,9 @@ def extract_firewall_policies():
                     add_log(f"Secondary 정책 추출 실패 (무시하고 계속): {str(e)}", 'warning')
             
             process_state['policies'] = policies
+
+            if results:
+                record_result_file('extract_policies', results[0]['path'])
 
             return {
                 'policies': results
@@ -327,6 +439,21 @@ def extract_firewall_policies():
 def extract_firewall_usage():
     """방화벽 사용이력 추출"""
     try:
+        if 'usage' in process_state.get('files', {}):
+            path = process_state['files']['usage']['filepath']
+            add_log("업로드된 사용이력 파일을 사용합니다")
+            df = pd.read_excel(path) if path.endswith('.xlsx') else pd.read_csv(path)
+            process_state['usage'] = {'uploaded': df}
+            record_result_file('extract_usage', path)
+            return {
+                'usage': [{
+                    'target': 'uploaded',
+                    'count': len(df),
+                    'file': os.path.basename(path),
+                    'path': path
+                }]
+            }
+
         if FIREWALL_MODULE_AVAILABLE and 'firewall_collectors' in process_state:
             collectors = process_state['firewall_collectors']
             usage = {}
@@ -338,13 +465,13 @@ def extract_firewall_usage():
 
             primary_df['장비구분'] = 'Primary'
             usage['primary'] = primary_df
-            output_primary = os.path.join('results', 'usage_history_primary.xlsx')
+            output_primary = generate_result_path('extract_usage', 'primary')
             primary_df.to_excel(output_primary, index=False)
             add_log(f"Primary 사용이력 추출 완료: {len(primary_df)}개")
             results.append({
                 'target': 'primary',
                 'count': len(primary_df),
-                'file': 'usage_history_primary.xlsx',
+                'file': os.path.basename(output_primary),
                 'path': output_primary
             })
             
@@ -356,13 +483,13 @@ def extract_firewall_usage():
 
                     secondary_df['장비구분'] = 'Secondary'
                     usage['secondary'] = secondary_df
-                    output_secondary = os.path.join('results', 'usage_history_secondary.xlsx')
+                    output_secondary = generate_result_path('extract_usage', 'secondary')
                     secondary_df.to_excel(output_secondary, index=False)
                     add_log(f"Secondary 사용이력 추출 완료: {len(secondary_df)}개")
                     results.append({
                         'target': 'secondary',
                         'count': len(secondary_df),
-                        'file': 'usage_history_secondary.xlsx',
+                        'file': os.path.basename(output_secondary),
                         'path': output_secondary
                     })
                     
@@ -370,6 +497,8 @@ def extract_firewall_usage():
                     add_log(f"Secondary 사용이력 추출 실패 (무시하고 계속): {str(e)}", 'warning')
             
             process_state['usage'] = usage
+            if results:
+                record_result_file('extract_usage', results[0]['path'])
 
             return {
                 'usage': results
@@ -393,6 +522,21 @@ def extract_firewall_usage():
 def extract_duplicate_policies():
     """중복 정책 추출"""
     try:
+        if 'duplicates' in process_state.get('files', {}):
+            path = process_state['files']['duplicates']['filepath']
+            add_log("업로드된 중복 정책 파일을 사용합니다")
+            df = pd.read_excel(path)
+            process_state['duplicates'] = {'uploaded': df}
+            record_result_file('extract_duplicates', path)
+            return {
+                'duplicate_policies': [{
+                    'target': 'uploaded',
+                    'count': len(df),
+                    'file': os.path.basename(path),
+                    'path': path
+                }]
+            }
+
         if FIREWALL_MODULE_AVAILABLE and 'firewall_collectors' in process_state:
             collectors = process_state['firewall_collectors']
 
@@ -420,19 +564,22 @@ def extract_duplicate_policies():
                 else:
                     duplicate_df = analyze_duplicate_policies(df)
 
-                output_file = os.path.join('results', f'duplicate_policies_{label}.xlsx')
+                output_file = generate_result_path('extract_duplicates', label)
                 duplicate_df.to_excel(output_file, index=False)
 
                 results.append({
                     'target': label,
                     'count': len(duplicate_df),
-                    'file': f'duplicate_policies_{label}.xlsx',
+                    'file': os.path.basename(output_file),
                     'path': output_file
                 })
 
             total_count = sum(r['count'] for r in results)
 
             add_log(f"중복 정책 분석 완료: {total_count}개 중복 정책")
+
+            if results:
+                record_result_file('extract_duplicates', results[0]['path'])
 
             return {
                 'duplicate_policies': results
@@ -466,6 +613,139 @@ def analyze_duplicate_policies(policies):
     
     return duplicates
 
+def run_policy_processor(step_id):
+    """policy_deletion_processor 모듈을 이용한 간단 처리"""
+    class DummyConfig:
+        def get(self, key, default=None):
+            return default
+
+    def prepare_file_manager(file_list):
+        cfg = DummyConfig()
+        fm = FileManager(cfg)
+        paths = iter(file_list)
+        fm.select_files = lambda extension=None: next(paths, None)
+        captured = {}
+        original_update = fm.update_version
+
+        def updater(name, final_version=False):
+            new_name = os.path.join(app.config['RESULTS_FOLDER'], os.path.basename(original_update(name, final_version)))
+            captured['output'] = new_name
+            return new_name
+
+        fm.update_version = updater
+        fm._captured = captured
+        original_remove = fm.remove_extension
+
+        def remover(name):
+            base = os.path.join(app.config['RESULTS_FOLDER'], os.path.basename(original_remove(name)))
+            captured.setdefault('remove_base', base)
+            return base
+
+        fm.remove_extension = remover
+        return fm
+
+    if step_id == 'parse_descriptions':
+        policy_path = process_state.get('files', {}).get('extract_policies', {}).get('filepath')
+        fm = prepare_file_manager([policy_path])
+        processor = RequestParser(fm.config)
+        if not processor.parse_request_type(fm):
+            raise Exception('신청 정보 파싱 실패')
+        output = fm._captured.get('output')
+        record_result_file(step_id, output)
+        return {'file': os.path.basename(output)}
+
+    if step_id == 'add_mis_info':
+        mis_path = process_state.get('files', {}).get('mis_id', {}).get('filepath')
+        policy_path = process_state.get('files', {}).get('extract_policies', {}).get('filepath')
+        fm = prepare_file_manager([policy_path, mis_path])
+        processor = MisIdAdder(fm.config)
+        if not processor.add_mis_id(fm):
+            raise Exception('MIS ID 추가 실패')
+        output = fm._captured.get('output')
+        record_result_file('add_mis_info', output)
+        process_state['files']['policy_with_mis'] = output
+        return {'file': os.path.basename(output)}
+
+    if step_id == 'add_usage_info':
+        usage_path = process_state.get('files', {}).get('extract_usage', {}).get('filepath')
+        policy_path = process_state.get('files', {}).get('policy_with_mis')
+        fm = prepare_file_manager([policy_path, usage_path])
+        processor = PolicyUsageProcessor(fm.config)
+        if not processor.add_usage_status(fm):
+            raise Exception('사용 정보 추가 실패')
+        output = fm._captured.get('output')
+        record_result_file('add_usage_info', output)
+        process_state['files']['policy_with_usage'] = output
+        return {'file': os.path.basename(output)}
+
+    if step_id == 'merge_application_info':
+        app_path = process_state.get('files', {}).get('application', {}).get('filepath')
+        policy_path = process_state.get('files', {}).get('parse_descriptions', {}).get('filepath')
+        fm = prepare_file_manager([policy_path, app_path])
+        processor = RequestInfoAdder(fm.config)
+        if not processor.add_request_info(fm):
+            raise Exception('신청 정보 통합 실패')
+        output = fm._captured.get('output')
+        record_result_file(step_id, output)
+        process_state['files']['policy_with_app'] = output
+        return {'file': os.path.basename(output)}
+
+    if step_id == 'vendor_exception_handling':
+        vendor = process_state.get('firewall_config', {}).get('vendor', 'paloalto')
+        policy_path = process_state.get('files', {}).get('policy_with_app') or process_state.get('files', {}).get('policy_with_mis')
+        fm = prepare_file_manager([policy_path])
+        handler = ExceptionHandler(fm.config)
+        method = getattr(handler, f"{vendor}_exception", None)
+        if not method or not method(fm):
+            raise Exception('예외처리 실패')
+        output = fm._captured.get('output')
+        record_result_file(step_id, output)
+        process_state['files']['policy_after_exception'] = output
+        return {'file': os.path.basename(output)}
+
+    if step_id == 'classify_duplicates':
+        dup_path = process_state.get('files', {}).get('extract_duplicates', {}).get('filepath')
+        info_path = process_state.get('files', {}).get('policy_with_app')
+        fm = prepare_file_manager([dup_path, info_path])
+        classifier = DuplicatePolicyClassifier(fm.config)
+        if not classifier.organize_redundant_file(fm):
+            raise Exception('중복정책 분류 실패')
+        base = fm._captured.get('remove_base')
+        outputs = [f"{base}_정리.xlsx", f"{base}_공지.xlsx", f"{base}_삭제.xlsx"]
+        for p in outputs:
+            record_result_file(step_id, p)
+        process_state['files']['duplicate_summary'] = outputs[0]
+        return {'files': [os.path.basename(p) for p in outputs]}
+
+    if step_id == 'finalize_classification':
+        policy_path = process_state.get('files', {}).get('policy_with_usage')
+        dup_summary = process_state.get('files', {}).get('duplicate_summary')
+        fm = prepare_file_manager([policy_path, dup_summary])
+        classifier = DuplicatePolicyClassifier(fm.config)
+        if not classifier.add_duplicate_status(fm):
+            raise Exception('중복 정보 추가 실패')
+        output = fm._captured.get('output')
+        record_result_file(step_id, output)
+        process_state['files']['final_policy'] = output
+        return {'file': os.path.basename(output)}
+
+    if step_id == 'generate_results':
+        policy_path = process_state.get('files', {}).get('final_policy')
+        fm = prepare_file_manager([policy_path])
+        excel = ExcelManager(fm.config)
+        notifier = NotificationClassifier(fm.config)
+        before = set(os.listdir(app.config['RESULTS_FOLDER']))
+        if not notifier.classify_notifications(fm, excel):
+            raise Exception('결과 파일 생성 실패')
+        after = set(os.listdir(app.config['RESULTS_FOLDER']))
+        new_files = [os.path.join(app.config['RESULTS_FOLDER'], f) for f in after - before]
+        for p in new_files:
+            record_result_file(step_id, p)
+        return {'files': [os.path.basename(p) for p in new_files]}
+
+    time.sleep(2)
+    return {'processed_records': 0}
+
 @app.route('/')
 def index():
     """메인 페이지"""
@@ -474,27 +754,6 @@ def index():
 @app.route('/api/status')
 def get_status():
     """현재 상태 반환"""
-    # JSON 직렬화가 가능한 형태로 상태 정보를 변환
-    def serialize_state(state):
-        serialized = {}
-        for key, value in state.items():
-            if key in {'firewall_collectors'}:
-                # 객체 정보는 문자열로 대체
-                serialized[key] = 'initialized' if value else None
-            elif key in {'policies', 'usage'} and isinstance(value, dict):
-                # 데이터프레임은 개수만 전달
-                summary = {}
-                for label, df in value.items():
-                    try:
-                        summary[label] = len(df)
-                    except Exception:
-                        summary[label] = 0
-                serialized[key] = summary
-            else:
-                # 기본적으로 JSON 변환 가능한 값 사용
-                serialized[key] = value
-        return serialized
-
     return jsonify({
         'success': True,
         'phases': PROCESS_PHASES,
@@ -504,6 +763,27 @@ def get_status():
             'paused': process_state.get('paused', False)
         }
     })
+
+@app.route('/api/status/stream')
+def stream_status():
+    """SSE 방식의 상태 스트림"""
+    def event_stream():
+        last = None
+        while True:
+            payload = json.dumps({
+                'phases': PROCESS_PHASES,
+                'state': {
+                    **serialize_state(process_state),
+                    'manual_mode': process_state.get('manual_mode', False),
+                    'paused': process_state.get('paused', False)
+                }
+            })
+            if payload != last:
+                yield f"data: {payload}\n\n"
+                last = payload
+            time.sleep(1)
+
+    return Response(event_stream(), mimetype='text/event-stream')
 
 @app.route('/api/firewall/config', methods=['POST'])
 def set_firewall_config():
@@ -599,6 +879,10 @@ def set_firewall_config():
 def execute_step(step_id):
     """단계 실행"""
     try:
+        current = process_state['steps'].get(step_id)
+        if current and current.get('status') == 'running':
+            return jsonify({'success': False, 'error': '이미 실행 중입니다'}), 409
+
         add_log(f"단계 실행 중: {step_id}")
         update_step_status(step_id, 'running')
         
@@ -617,19 +901,21 @@ def execute_step(step_id):
             
         elif step_id == 'parse_descriptions':
             add_log("Description 파싱 중...")
-            time.sleep(2)
-            result = {'parsed_requests': 1200, 'missing_descriptions': 50}
+            result = run_policy_processor(step_id)
             
         elif step_id == 'validate_files':
             add_log("파일 유효성 검사 중...")
             time.sleep(1)
             result = {'valid_files': 2, 'warnings': 3}
             
-        elif step_id in ['add_mis_info', 'merge_application_info', 'vendor_exception_handling', 
+        elif step_id in ['add_mis_info', 'merge_application_info', 'vendor_exception_handling',
                         'classify_duplicates', 'add_usage_info', 'finalize_classification']:
             add_log(f"{step_id} 처리 중...")
-            time.sleep(2)
-            result = {'processed_records': 1250}
+            try:
+                result = run_policy_processor(step_id)
+            except Exception as e:
+                add_log(f"{step_id} 처리 실패: {str(e)}", 'error')
+                raise
             
         elif step_id == 'generate_results':
             add_log("최종 결과 파일 생성 중...")
@@ -673,17 +959,33 @@ def upload_file(file_type):
             return jsonify({'success': False, 'error': '파일이 선택되지 않았습니다'}), 400
         
         # 파일 저장
-        filename = secure_filename(file.filename)
+        original_name = secure_filename(file.filename)
+        ip = process_state.get('firewall_config', {}).get('primary_ip', 'unknown')
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{timestamp}_{ip}_{file_type}{os.path.splitext(original_name)[1]}"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        
+
         # 파일 정보 저장
         process_state['files'][file_type] = {
             'filename': filename,
             'filepath': filepath,
             'upload_time': datetime.now().isoformat()
         }
-        
+
+        step_map = {
+            'application': 'upload_application_file',
+            'mis_id': 'upload_mis_file',
+            'policies': 'upload_policies_file',
+            'usage': 'upload_usage_file',
+            'duplicates': 'upload_duplicates_file'
+        }
+
+        step_id = step_map.get(file_type)
+        if step_id:
+            update_step_status(step_id, 'completed', {'file': filename})
+            record_result_file(step_id, filepath)
+
         add_log(f"{file_type} 파일 업로드 완료: {filename}")
         
         return jsonify({
@@ -708,14 +1010,19 @@ def preview_file(file_type):
         
         filepath = process_state['files'][file_type]['filepath']
         
-        # Excel 파일 읽기
-        df = pd.read_excel(filepath, nrows=10)  # 처음 10행만
+        ext = os.path.splitext(filepath)[1].lower()
+        if ext == '.csv':
+            df = pd.read_csv(filepath, nrows=10)
+            total_rows = len(pd.read_csv(filepath))
+        else:
+            df = pd.read_excel(filepath, nrows=10)
+            total_rows = len(pd.read_excel(filepath))
         
         return jsonify({
             'success': True,
             'columns': df.columns.tolist(),
             'data': df.to_dict('records'),
-            'total_rows': len(pd.read_excel(filepath))
+            'total_rows': total_rows
         })
         
     except Exception as e:
@@ -723,6 +1030,57 @@ def preview_file(file_type):
             'success': False,
             'error': str(e)
         }), 500
+
+
+@app.route('/api/file/download/<file_type>')
+def download_file(file_type):
+    """업로드된 파일 다운로드"""
+    try:
+        if file_type not in process_state['files']:
+            return jsonify({'success': False, 'error': '파일이 없습니다'}), 404
+
+        filepath = process_state['files'][file_type]['filepath']
+        return send_file(filepath, as_attachment=True)
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/step/download/<step_id>/<int:index>')
+def download_step_file(step_id, index=0):
+    """단계 결과 파일 다운로드"""
+    try:
+        step = process_state['steps'].get(step_id)
+        if not step or step.get('status') != 'completed':
+            return jsonify({'success': False, 'error': '파일이 없습니다'}), 404
+
+        def gather_paths(data):
+            paths = []
+            if isinstance(data, dict):
+                if 'path' in data and os.path.exists(data['path']):
+                    paths.append(data['path'])
+                if 'file' in data and os.path.exists(os.path.join(app.config['RESULTS_FOLDER'], data['file'])):
+                    paths.append(os.path.join(app.config['RESULTS_FOLDER'], data['file']))
+                for v in data.values():
+                    paths.extend(gather_paths(v))
+            elif isinstance(data, list):
+                for item in data:
+                    paths.extend(gather_paths(item))
+            elif isinstance(data, str) and os.path.exists(data):
+                paths.append(data)
+            return paths
+
+        paths = gather_paths(step.get('result'))
+        if not paths or index >= len(paths):
+            return jsonify({'success': False, 'error': '파일이 없습니다'}), 404
+
+        return send_file(paths[index], as_attachment=True)
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/reset', methods=['POST'])
 def reset_process():
@@ -780,9 +1138,15 @@ def toggle_manual_mode():
     try:
         data = request.get_json()
         enabled = data.get('enabled', not process_state['manual_mode'])
-        
+
         process_state['manual_mode'] = enabled
-        
+
+        if enabled and 'firewall_config' not in process_state['steps']:
+            update_step_status('firewall_config', 'completed', {'skipped': True})
+        elif not enabled and process_state['steps'].get('firewall_config', {}).get('result', {}).get('skipped'):
+            if 'firewall_config' in process_state['steps']:
+                del process_state['steps']['firewall_config']
+
         mode_text = "수동 진행 모드" if enabled else "자동 진행 모드"
         add_log(f"{mode_text}로 변경되었습니다", 'info')
         
@@ -853,11 +1217,21 @@ def step_back(step_id):
                 del process_state['steps'][step_reset_id]
         
         # 관련 파일들도 삭제
-        if step_id in ['upload_application_file', 'upload_mis_file']:
-            file_type = 'application' if 'application' in step_id else 'mis_id'
+        if step_id in ['upload_application_file', 'upload_mis_file', 'upload_policies_file', 'upload_usage_file', 'upload_duplicates_file']:
+            if 'application' in step_id:
+                file_type = 'application'
+            elif 'mis' in step_id:
+                file_type = 'mis_id'
+            elif 'policies' in step_id:
+                file_type = 'policies'
+            elif 'usage' in step_id:
+                file_type = 'usage'
+            else:
+                file_type = 'duplicates'
             if file_type in process_state['files']:
                 # 파일 삭제
-                file_path = process_state['files'][file_type]
+                file_info = process_state['files'][file_type]
+                file_path = file_info if isinstance(file_info, str) else file_info.get('filepath')
                 if os.path.exists(file_path):
                     os.remove(file_path)
                 del process_state['files'][file_type]
@@ -894,9 +1268,10 @@ def replace_file(file_type):
         
         # 기존 파일 삭제
         if file_type in process_state['files']:
-            old_file_path = process_state['files'][file_type]
-            if os.path.exists(old_file_path):
-                os.remove(old_file_path)
+            old_info = process_state['files'][file_type]
+            old_path = old_info if isinstance(old_info, str) else old_info.get('filepath')
+            if os.path.exists(old_path):
+                os.remove(old_path)
                 add_log(f"기존 {file_type} 파일이 삭제되었습니다", 'info')
         
         # 새 파일 저장
@@ -908,18 +1283,27 @@ def replace_file(file_type):
         file.save(file_path)
         
         # 상태 업데이트
-        process_state['files'][file_type] = file_path
+        process_state['files'][file_type] = {
+            'filename': filename,
+            'filepath': file_path,
+            'upload_time': datetime.now().isoformat()
+        }
         
         # 관련 단계들 재실행을 위해 상태 초기화
         steps_to_reset = []
         if file_type == 'application':
-            steps_to_reset = ['validate_files', 'merge_application_info', 'vendor_exception_handling', 
-                             'classify_duplicates', 'add_usage_info', 'finalize_classification', 
+            steps_to_reset = ['validate_files', 'merge_application_info', 'vendor_exception_handling',
+                             'classify_duplicates', 'add_usage_info', 'finalize_classification',
                              'generate_results']
         elif file_type == 'mis_id':
-            steps_to_reset = ['validate_files', 'add_mis_info', 'merge_application_info', 
-                             'vendor_exception_handling', 'classify_duplicates', 'add_usage_info', 
+            steps_to_reset = ['validate_files', 'add_mis_info', 'merge_application_info',
+                             'vendor_exception_handling', 'classify_duplicates', 'add_usage_info',
                              'finalize_classification', 'generate_results']
+        elif file_type in ['policies', 'usage', 'duplicates']:
+            steps_to_reset = ['extract_policies', 'extract_usage', 'extract_duplicates',
+                              'parse_descriptions', 'add_mis_info', 'merge_application_info',
+                              'vendor_exception_handling', 'classify_duplicates', 'add_usage_info',
+                              'finalize_classification', 'generate_results']
         
         for step_id in steps_to_reset:
             if step_id in process_state['steps']:

@@ -53,6 +53,13 @@ class FirewallProcessApp {
         document.getElementById('upload-file-btn').addEventListener('click', () => {
             this.uploadFile();
         });
+
+        const nextBtn = document.getElementById('next-step-btn');
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => {
+                this.executeNextStep();
+            });
+        }
     }
 
     async loadInitialStatus() {
@@ -111,10 +118,34 @@ class FirewallProcessApp {
     }
 
     startStatusUpdates() {
-        // 5초마다 상태 업데이트
-        this.statusUpdateInterval = setInterval(() => {
-            this.loadInitialStatus();
-        }, 5000); // 5초로 늘림
+        if (window.EventSource) {
+            this.statusSource = new EventSource('/api/status/stream');
+            this.statusSource.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+
+                const isFirstLoad = !this.phases || Object.keys(this.phases).length === 0;
+                const hasStateChanged = this.hasStateChanged(data.state);
+                const hasLogsChanged = this.hasLogsChanged(data.state.logs);
+
+                this.phases = data.phases;
+                this.currentState = data.state;
+
+                if (isFirstLoad) {
+                    this.renderPhases();
+                } else {
+                    if (hasStateChanged) this.updateStepsOnly();
+                    if (hasLogsChanged) this.updateLogs();
+                }
+
+                this.updateControlButtons();
+                this.updateCurrentStatus();
+            };
+        } else {
+            // 폴백: 3초마다 폴링
+            this.statusUpdateInterval = setInterval(() => {
+                this.loadInitialStatus();
+            }, 3000);
+        }
     }
 
     renderPhases() {
@@ -331,11 +362,20 @@ class FirewallProcessApp {
             `;
         }
         
-        // 미리보기 버튼 (파일 업로드 단계)
+        // 미리보기/다운로드 버튼 (업로드 단계)
         if (step.file_type && stepStatus === 'completed') {
             actions += `
                 <button class="btn btn-info btn-sm" onclick="app.previewFile('${step.file_type}')" title="파일 미리보기">
                     <i class="fas fa-eye"></i> 미리보기
+                </button>
+                <button class="btn btn-secondary btn-sm ms-2" onclick="app.downloadFile('${step.file_type}')" title="파일 다운로드">
+                    <i class="fas fa-download"></i> 다운로드
+                </button>
+            `;
+        } else if (stepStatus === 'completed' && this.hasResultFile(step.id)) {
+            actions += `
+                <button class="btn btn-secondary btn-sm" onclick="app.downloadStepFile('${step.id}')" title="파일 다운로드">
+                    <i class="fas fa-download"></i> 다운로드
                 </button>
             `;
         }
@@ -371,6 +411,18 @@ class FirewallProcessApp {
         const stepData = this.currentState.steps[stepId];
         if (!stepData) return 'pending';
         return stepData.status;
+    }
+
+    hasResultFile(stepId) {
+        const stepData = this.currentState.steps[stepId];
+        if (!stepData || stepData.status !== 'completed') return false;
+        const r = stepData.result || {};
+        if (r.file) return true;
+        if (Array.isArray(r.files) && r.files.length) return true;
+        if (Array.isArray(r.policies) && r.policies.length) return true;
+        if (Array.isArray(r.usage) && r.usage.length) return true;
+        if (Array.isArray(r.duplicate_policies) && r.duplicate_policies.length) return true;
+        return false;
     }
 
     calculatePhaseStatus(steps) {
@@ -547,9 +599,19 @@ class FirewallProcessApp {
     openFileUpload(fileType, stepName) {
         this.currentFileType = fileType;
         document.getElementById('file-upload-title').textContent = stepName;
-        document.getElementById('file-input').value = '';
+        const input = document.getElementById('file-input');
+        input.value = '';
         document.getElementById('upload-file-btn').disabled = true;
-        
+        const help = document.getElementById('file-upload-help');
+
+        if (fileType === 'mis_id') {
+            input.accept = '.csv';
+            help.innerHTML = '<i class="fas fa-info-circle"></i> CSV 파일(.csv)만 업로드 가능합니다.';
+        } else {
+            input.accept = '.xlsx,.xls';
+            help.innerHTML = '<i class="fas fa-info-circle"></i> Excel 파일(.xlsx, .xls)만 업로드 가능합니다.';
+        }
+
         const modal = new bootstrap.Modal(document.getElementById('file-upload-modal'));
         modal.show();
     }
@@ -576,6 +638,7 @@ class FirewallProcessApp {
             
             if (result.success) {
                 bootstrap.Modal.getInstance(document.getElementById('file-upload-modal')).hide();
+                await this.loadInitialStatus();
                 this.autoExecuteNextSteps();
             } else {
                 alert('업로드 오류: ' + result.error);
@@ -595,6 +658,7 @@ class FirewallProcessApp {
             
             if (result.success) {
                 // 자동으로 다음 단계들 실행
+                await this.loadInitialStatus();
                 setTimeout(() => {
                     this.autoExecuteNextSteps();
                 }, 1000);
@@ -602,6 +666,19 @@ class FirewallProcessApp {
         } catch (error) {
             console.error('단계 실행 오류:', error);
         }
+    }
+
+    async executeNextStep() {
+        const nextStep = this.getNextPendingStep();
+        if (!nextStep) {
+            alert('더 이상 실행할 단계가 없습니다.');
+            return;
+        }
+        if (!this.canExecuteStep(nextStep.id)) {
+            alert('이전 단계가 완료되지 않았습니다.');
+            return;
+        }
+        await this.executeStep(nextStep.id);
     }
 
     autoExecuteNextSteps() {
@@ -820,6 +897,14 @@ class FirewallProcessApp {
         
         input.click();
     }
+
+    async downloadFile(fileType) {
+        window.location.href = `/api/file/download/${fileType}`;
+    }
+
+    async downloadStepFile(stepId) {
+        window.location.href = `/api/step/download/${stepId}/0`;
+    }
     
     updateManualModeButton() {
         const btn = document.getElementById('manual-mode-btn');
@@ -850,6 +935,17 @@ class FirewallProcessApp {
     updateControlButtons() {
         this.updateManualModeButton();
         this.updatePauseButton();
+
+        const nextBtn = document.getElementById('next-step-btn');
+        if (nextBtn) {
+            if (this.currentState.manual_mode || this.currentState.paused) {
+                nextBtn.style.display = 'inline-block';
+                const next = this.getNextPendingStep();
+                nextBtn.disabled = !next || !this.canExecuteStep(next.id);
+            } else {
+                nextBtn.style.display = 'none';
+            }
+        }
     }
 }
 
