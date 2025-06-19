@@ -30,7 +30,7 @@ class ConditionParser:
             prop_instance.get("parameters", {})
         ) if has_prop_parameters else []
 
-        expression_parameter = self.parse_expression_paramter(expr, has_prop_parameters)
+        expression_parameter = self.parse_expression_parameter(expr, has_prop_parameters)
 
         if not expression_parameter and "parameter" in prop_instance:
             expression_parameter = self.parse_single_property_parameter(prop_instance["parameter"])
@@ -52,7 +52,7 @@ class ConditionParser:
             "expression_mode": expression_parameter.get("mode") if expression_parameter else None
         }
     
-    def parse_single_property_parameter(self, parm: Dict[str, Any]) -> Dict[str, Any]:
+    def parse_single_property_parameter(self, param: Dict[str, Any]) -> Dict[str, Any]:
         value_type = param.get("@valueType")
         value = param.get("value", {})
 
@@ -76,7 +76,7 @@ class ConditionParser:
             }
         elif "propertyInstance" in value:
             nested_prop = value["propertyInstance"]
-            nested_params = self.parse_property_prameters(nested_prop.get("parameters", {}))
+            nested_params = self.parse_property_parameters(nested_prop.get("parameters", {}))
             return {
                 "mode": "nested_property",
                 "value_type": value_type,
@@ -138,7 +138,7 @@ class ConditionParser:
         
         return results
     
-    def parse_expression_parameters(self, expr: Dict[str, Any], has_prop_parameters: bool) -> Optional[Dict[str, Any]]:
+    def parse_expression_parameter(self, expr: Dict[str, Any], has_prop_parameters: bool) -> Optional[Dict[str, Any]]:
         param = expr.get("parameter")
         if not param:
             return None
@@ -154,6 +154,7 @@ class ConditionParser:
                     "parameters": self.parse_property_parameters(nested_prop.get("parameters", {}))
                 }
             if "stringValue" in value:
+                sv = value["stringValue"]
                 return {
                     "mode": "value",
                     "value_kind": "string",
@@ -173,7 +174,7 @@ class ConditionParser:
             "mode": "meta",
             "value_type": param.get("@valueType"),
             "value_id": param.get("@valueId"),
-            "type_id": param.get("typeId"),
+            "type_id": param.get("@typeId"),
             "value": param.get("@valueId")
         }
     
