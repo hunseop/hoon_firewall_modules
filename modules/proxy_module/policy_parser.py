@@ -5,7 +5,7 @@ from condition_parser import ConditionParser
 
 class PolicyParser:
     def __init__(self, source, from_xml: bool = False):
-        if fron_xml:
+        if from_xml:
             parsed = xmltodict.parse(source)
             self.data = parsed.get("libraryContent", {}).get("ruleGroup", {})
         elif isinstance(source, dict):
