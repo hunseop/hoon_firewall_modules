@@ -10,7 +10,7 @@ import re
 from module.policy_parser import PolicyParser
 
 # 보안 경고 무시
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestsWarning)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # 로깅 설정
 logging.basicConfig(
@@ -28,7 +28,7 @@ class SkyhighSWGClient:
         self.verify_ssl = verify_ssl
         self.session = requests.Session()
         self.session_id = None
-    
+
     def login(self):
         login_url = urljoin(self.base_url + '/', 'login')
         response = self.session.post(login_url, auth=HTTPBasicAuth(self.username, self.password), verify=self.verify_ssl)
@@ -44,12 +44,12 @@ class SkyhighSWGClient:
                 raise Exception("세션 ID를 찾을 수 없습니다.")
         else:
             raise Exception(f"로그인 실패: {response.status_code} {response.text}")
-    
+
     def _build_url(self, endpoint):
         if not self.session_id:
             raise Exception("세션 ID가 없습니다. 먼저 로그인해야 합니다.")
         return urljoin(self.base_url + '/', f"{endpoint};jsessionid={self.session_id}")
-    
+
     def logout(self):
         logout_url = self._build_url('logout')
         response = self.session.post(logout_url, verify=self.verify_ssl)
@@ -57,7 +57,7 @@ class SkyhighSWGClient:
             logger.info("로그아웃 완료")
         else:
             raise Exception(f"로그아웃 실패: {response.status_code} {response.text}")
-    
+
     def list_rulesets(self, top_level_only=False, page=1, page_size=-1):
         params = {
             'topLevelOnly': str(top_level_only).lower(),
@@ -87,7 +87,7 @@ class SkyhighSWGClient:
                 raise
         else:
             raise Exception(f"Rule Set 목록 조회 실패: {response.status_code} {response.text}")
-    
+
     def export_ruleset_to_xml_file(self, ruleset_id, title, output_dir='exports'):
         url = self._build_url(f'rulesets/rulegroups/{ruleset_id}/export')
         response = self.session.post(url, verify=self.verify_ssl)
@@ -102,7 +102,7 @@ class SkyhighSWGClient:
             logger.info(f"Rule Set '{title}'이(가) '{filename}'로 저장되었습니다.")
         else:
             raise Exception(f"Rule Set '{title}' 내보내기 실패: {response.status_code} {response.text}")
-    
+
     def export_ruleset(self, ruleset_id, title, output_dir='exports'):
         url = self._build_url(f'rulesets/rulegroups/{ruleset_id}/export')
         response = self.session.post(url, verify=self.verify_ssl)
@@ -110,14 +110,13 @@ class SkyhighSWGClient:
             os.makedirs(output_dir, exist_ok=True)
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             safe_title = re.sub(r'[\\/*?:"<>|]', '_', title)
-            filename = f"{timestamp}_{safe_title}.xml"
+            filename = f"{timestamp}_{safe_title}"
             filepath = os.path.join(output_dir, filename)
-            
+
             parser = PolicyParser(response.content, from_xml=True)
             parser.parse()
             parser.to_excel(f"{filepath}_rulegroups.xlsx", f"{filepath}_rules.xlsx")
-            
+    
             logger.info(f"Rule Set '{title}'이(가) '{filename}'로 저장되었습니다.")
         else:
-            raise Exception(f"Rule Set '{title}' 내보내기 실패: {response.status_code} {response.text}")
-    
+            raise Exception(f"Rule Set '{title}' 내보내기 실패: {response.status_code} {response.text}")    
