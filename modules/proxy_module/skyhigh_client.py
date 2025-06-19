@@ -7,7 +7,7 @@ import urllib3
 from datetime import datetime
 import os
 import re
-from module.policy_parser import PolicyParser
+from .policy_parser import PolicyParser
 
 # 보안 경고 무시
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)

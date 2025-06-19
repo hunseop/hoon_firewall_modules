@@ -1,7 +1,7 @@
 import json
 import pandas as pd
 import xmltodict
-from condition_parser import ConditionParser
+from .condition_parser import ConditionParser
 
 class PolicyParser:
     def __init__(self, source, from_xml: bool = False):
