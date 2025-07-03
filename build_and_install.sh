@@ -58,4 +58,7 @@ echo "   python -c 'from hoon_firewall_modules import PolicyComparator; print(\"
 echo ""
 echo "📦 패키지 파일 위치: dist/"
 echo "   - $(ls dist/*.whl 2>/dev/null || echo '빌드된 wheel 파일 없음')"
-echo "   - $(ls dist/*.tar.gz 2>/dev/null || echo '빌드된 source 파일 없음')" 
+echo "   - $(ls dist/*.tar.gz 2>/dev/null || echo '빌드된 source 파일 없음')"
+
+# git clone 할 필요 없음!
+pip install git+https://github.com/hunseop/hoon_firewall_modules.git 

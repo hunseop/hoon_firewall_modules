@@ -33,12 +33,12 @@
 
 ### GitHub에서 직접 설치
 ```bash
-pip install git+https://github.com/yourusername/hoon_firewall_modules.git
+pip install git+https://github.com/hunseop/hoon_firewall_modules.git
 ```
 
 ### 로컬 개발 설치
 ```bash
-git clone https://github.com/yourusername/hoon_firewall_modules.git
+git clone https://github.com/hunseop/hoon_firewall_modules.git
 cd hoon-firewall-modules
 pip install -e .
 ```
@@ -276,18 +276,7 @@ hoon_firewall_modules/
 - pandas >= 1.3.0
 - openpyxl >= 3.0.0
 - requests >= 2.25.0
-- Flask >= 3.0.0 (simple_firewall_app 실행 시)
 
-## 🎮 예제 애플리케이션
-
-프로젝트에는 Flask 기반의 샘플 웹 앱 `simple_firewall_app`이 포함되어 있습니다.
-정책 추출과 분석 과정을 웹 인터페이스로 체험하려면 다음과 같이 실행합니다.
-
-```bash
-cd simple_firewall_app
-pip install -r requirements.txt
-python app.py
-```
 
 ## 📚 문서
 
