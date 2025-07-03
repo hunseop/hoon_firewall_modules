@@ -1,5 +1,5 @@
 """
-Hoon Firewall Modules - 방화벽 정책 관리를 위한 통합 라이브러리
+FPAT (Firewall Policy Analysis Tool) - 방화벽 정책 관리를 위한 통합 라이브러리
 
 이 라이브러리는 다음과 같은 기능을 제공합니다:
 - 방화벽 정책 비교 및 분석
@@ -8,33 +8,26 @@ Hoon Firewall Modules - 방화벽 정책 관리를 위한 통합 라이브러리
 - 정책 삭제 시나리오 처리
 """
 
-__version__ = "1.0.0"
-__author__ = "Hoon"
-__email__ = "your-email@example.com"
+__version__ = "1.2.0"
+__author__ = "Hunseop Kim"
+__email__ = "khunseop@gmail.com"
 
 # 주요 클래스들을 최상위 레벨에서 import 가능하게 함
 try:
-    from fpat.policy_comparator.comparator import PolicyComparator
-    from fpat.policy_comparator.excel_formatter import save_results_to_excel
-    from fpat.firewall_module.firewall_interface import FirewallInterface
-    from fpat.firewall_module.exporter import export_policy_to_excel
-    from fpat.firewall_analyzer import PolicyAnalyzer, RedundancyAnalyzer, ChangeAnalyzer, PolicyResolver
+    from .policy_comparator.comparator import PolicyComparator
+    from .policy_comparator.excel_formatter import save_results_to_excel
+    from .firewall_module.firewall_interface import FirewallInterface
+    from .firewall_module.exporter import export_policy_to_excel
+    from .firewall_analyzer import PolicyAnalyzer, RedundancyAnalyzer, ChangeAnalyzer, PolicyResolver
     
     # 각 모듈별로 네임스페이스 제공
-    import fpat
-except ImportError:
-    # 상대 import로 시도
-    from .fpat.policy_comparator.comparator import PolicyComparator
-    from .fpat.policy_comparator.excel_formatter import save_results_to_excel
-    from .fpat.firewall_module.firewall_interface import FirewallInterface
-    from .fpat.firewall_module.exporter import export_policy_to_excel
-    from .fpat.firewall_analyzer import PolicyAnalyzer, RedundancyAnalyzer, ChangeAnalyzer, PolicyResolver
-    
-    # 각 모듈별로 네임스페이스 제공
-    from . import fpat
-
-# 복잡한 의존성이 있는 클래스들은 개별 import 권장:
-# from modules.firewall_module.collector_factory import FirewallCollectorFactory
+    from . import firewall_analyzer
+    from . import firewall_module
+    from . import policy_comparator
+    from . import policy_deletion_processor
+except ImportError as e:
+    print(f"Import error: {e}")
+    raise
 
 __all__ = [
     # 정책 비교 관련
@@ -52,5 +45,8 @@ __all__ = [
     'PolicyResolver',
     
     # 모듈 네임스페이스
-    'fpat',
+    'firewall_analyzer',
+    'firewall_module',
+    'policy_comparator',
+    'policy_deletion_processor',
 ] 

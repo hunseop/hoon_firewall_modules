@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Hoon Firewall Modules 라이브러리 테스트 스크립트
+FPAT (Firewall Policy Analysis Tool) 라이브러리 테스트 스크립트
 
 이 스크립트는 라이브러리가 정상적으로 import되고 사용 가능한지 테스트합니다.
 """
@@ -10,8 +10,8 @@ def test_imports():
     try:
         # 현재 디렉토리에서 직접 import 테스트
         print("1. 현재 디렉토리에서 직접 import 테스트...")
-        import __init__ as hoon_firewall_modules
-        print(f"   ✅ 라이브러리 버전: {hoon_firewall_modules.__version__}")
+        import __init__ as fpat
+        print(f"   ✅ 라이브러리 버전: {fpat.__version__}")
         
         # 주요 클래스들 import 테스트
         print("2. 주요 클래스 import 테스트...")
@@ -65,7 +65,7 @@ def test_basic_functionality():
 
 def main():
     """메인 테스트 함수"""
-    print("🧪 Hoon Firewall Modules 라이브러리 테스트 시작\n")
+    print("🧪 FPAT 라이브러리 테스트 시작\n")
     
     success_count = 0
     total_tests = 2
@@ -86,10 +86,10 @@ def main():
     if success_count == total_tests:
         print("🎉 모든 테스트 통과! 라이브러리가 정상적으로 작동합니다.")
         print("\n📚 사용법:")
-        print("   # 현재 디렉토리에서:")
-        print("   from modules.policy_comparator import PolicyComparator")
-        print("   from modules.firewall_analyzer import PolicyAnalyzer")
-        print("   from modules.firewall_module import FirewallInterface")
+        print("   # 설치 후 사용:")
+        print("   from fpat.policy_comparator import PolicyComparator")
+        print("   from fpat.firewall_analyzer import PolicyAnalyzer")
+        print("   from fpat.firewall_module import FirewallInterface")
         return 0
     else:
         print("⚠️  일부 테스트 실패. 라이브러리 설정을 확인해주세요.")
