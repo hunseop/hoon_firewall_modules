@@ -19,7 +19,7 @@ from pathlib import Path
 # 모듈 경로 추가
 sys.path.append(str(Path(__file__).parent.parent))
 
-import modules.firewall_module as fw
+import fpat.firewall_module as fw
 
 def example_1_basic_usage():
     """예제 1: 기본 사용법 - 로깅과 예외 처리"""

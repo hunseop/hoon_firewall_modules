@@ -1,4 +1,4 @@
-# Hoon Firewall Modules
+# FPAT (Firewall Policy Analysis Tool)
 
 방화벽 정책 관리를 위한 통합 Python 라이브러리입니다.
 
@@ -33,19 +33,19 @@
 
 ### GitHub에서 직접 설치
 ```bash
-pip install git+https://github.com/hunseop/hoon_firewall_modules.git
+pip install git+https://github.com/hunseop/fpat.git
 ```
 
 ### 로컬 개발 설치
 ```bash
-git clone https://github.com/hunseop/hoon_firewall_modules.git
-cd hoon-firewall-modules
+git clone https://github.com/hunseop/fpat.git
+cd fpat
 pip install -e .
 ```
 
 ### PyPI에서 설치 (향후)
 ```bash
-pip install hoon-firewall-modules
+pip install fpat
 ```
 
 ## 🔧 사용법
@@ -53,7 +53,7 @@ pip install hoon-firewall-modules
 ### 1. 정책 비교
 
 ```python
-from hoon_firewall_modules import PolicyComparator
+from fpat import PolicyComparator
 
 # 정책 비교 인스턴스 생성
 comparator = PolicyComparator(
@@ -73,7 +73,7 @@ comparator.compare_policies()
 ### 2. 방화벽 연동
 
 ```python
-from hoon_firewall_modules import FirewallCollectorFactory
+from fpat import FirewallCollectorFactory
 
 # PaloAlto 방화벽 연결
 firewall = FirewallCollectorFactory.get_collector(
@@ -91,7 +91,7 @@ objects = firewall.export_network_objects()
 ### 3. 정책 분석
 
 ```python
-from modules.firewall_analyzer import PolicyAnalyzer, RedundancyAnalyzer, ShadowAnalyzer, PolicyFilter
+from fpat.firewall_analyzer import PolicyAnalyzer, RedundancyAnalyzer, ShadowAnalyzer, PolicyFilter
 import pandas as pd
 
 # 정책 데이터 로드
@@ -136,24 +136,24 @@ filtered_policies = policy_filter.filter_by_criteria(
 
 ```python
 # 기본 사용법 (권장)
-from modules.policy_comparator import PolicyComparator
-from modules.firewall_analyzer import (
+from fpat.policy_comparator import PolicyComparator
+from fpat.firewall_analyzer import (
     PolicyAnalyzer, 
     RedundancyAnalyzer, 
     ShadowAnalyzer, 
     PolicyFilter
 )
-from modules.firewall_module import FirewallInterface
+from fpat.firewall_module import FirewallInterface
 
 # 고급 기능 (개별 import)
-from modules.firewall_module.collector_factory import FirewallCollectorFactory
-from modules.policy_deletion_processor.processors import policy_usage_processor
+from fpat.firewall_module.collector_factory import FirewallCollectorFactory
+from fpat.policy_deletion_processor.processors import policy_usage_processor
 ```
 
 ### 5. 정책 필터링 상세 사용법
 
 ```python
-from modules.firewall_analyzer import PolicyFilter
+from fpat.firewall_analyzer import PolicyFilter
 import pandas as pd
 
 # PolicyFilter 인스턴스 생성
@@ -238,7 +238,7 @@ print(f"매치 비율: {summary['match_percentage']:.1f}%")
 
 ```python
 # 방화벽 컬렉터 팩토리 사용 (복잡한 의존성)
-from modules.firewall_module.collector_factory import FirewallCollectorFactory
+from fpat.firewall_module.collector_factory import FirewallCollectorFactory
 
 collector = FirewallCollectorFactory.get_collector(
     source_type="paloalto",
@@ -248,14 +248,14 @@ collector = FirewallCollectorFactory.get_collector(
 )
 
 # 삭제 시나리오 처리
-from modules.policy_deletion_processor.processors import policy_usage_processor
-from modules.policy_deletion_processor.utils import excel_manager
+from fpat.policy_deletion_processor.processors import policy_usage_processor
+from fpat.policy_deletion_processor.utils import excel_manager
 ```
 
 ## 📚 모듈 구조
 
 ```
-hoon_firewall_modules/
+fpat/
 ├── modules/
 │   ├── policy_comparator/     # 정책 비교 기능
 │   ├── firewall_module/       # 방화벽 연동 기능

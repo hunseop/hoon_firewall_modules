@@ -14,24 +14,24 @@ __email__ = "your-email@example.com"
 
 # 주요 클래스들을 최상위 레벨에서 import 가능하게 함
 try:
-    from modules.policy_comparator.comparator import PolicyComparator
-    from modules.policy_comparator.excel_formatter import save_results_to_excel
-    from modules.firewall_module.firewall_interface import FirewallInterface
-    from modules.firewall_module.exporter import export_policy_to_excel
-    from modules.firewall_analyzer import PolicyAnalyzer, RedundancyAnalyzer, ChangeAnalyzer, PolicyResolver
+    from fpat.policy_comparator.comparator import PolicyComparator
+    from fpat.policy_comparator.excel_formatter import save_results_to_excel
+    from fpat.firewall_module.firewall_interface import FirewallInterface
+    from fpat.firewall_module.exporter import export_policy_to_excel
+    from fpat.firewall_analyzer import PolicyAnalyzer, RedundancyAnalyzer, ChangeAnalyzer, PolicyResolver
     
     # 각 모듈별로 네임스페이스 제공
-    import modules
+    import fpat
 except ImportError:
     # 상대 import로 시도
-    from .modules.policy_comparator.comparator import PolicyComparator
-    from .modules.policy_comparator.excel_formatter import save_results_to_excel
-    from .modules.firewall_module.firewall_interface import FirewallInterface
-    from .modules.firewall_module.exporter import export_policy_to_excel
-    from .modules.firewall_analyzer import PolicyAnalyzer, RedundancyAnalyzer, ChangeAnalyzer, PolicyResolver
+    from .fpat.policy_comparator.comparator import PolicyComparator
+    from .fpat.policy_comparator.excel_formatter import save_results_to_excel
+    from .fpat.firewall_module.firewall_interface import FirewallInterface
+    from .fpat.firewall_module.exporter import export_policy_to_excel
+    from .fpat.firewall_analyzer import PolicyAnalyzer, RedundancyAnalyzer, ChangeAnalyzer, PolicyResolver
     
     # 각 모듈별로 네임스페이스 제공
-    from . import modules
+    from . import fpat
 
 # 복잡한 의존성이 있는 클래스들은 개별 import 권장:
 # from modules.firewall_module.collector_factory import FirewallCollectorFactory
@@ -52,5 +52,5 @@ __all__ = [
     'PolicyResolver',
     
     # 모듈 네임스페이스
-    'modules',
+    'fpat',
 ] 

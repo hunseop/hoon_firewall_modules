@@ -3,12 +3,12 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hoon-firewall-modules"
+name = "fpat"
 version = "1.2.0"
 authors = [
-    {name = "Hoon", email = "your-email@example.com"},
+    {name = "Hunseop Kim", email = "khunseop@gmail.com"},
 ]
-description = "방화벽 정책 관리를 위한 통합 라이브러리"
+description = "Firewall Policy Analysis Tool"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.8"
@@ -38,7 +38,6 @@ dependencies = [
     "urllib3==1.26.12",
     "paramiko>=3.0.0",
     "scp>=0.14.0",
-    "Flask>=3.0.0",
 ]
 
 [project.optional-dependencies]
@@ -55,19 +54,19 @@ docs = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/hoon-firewall-modules"
-"Bug Reports" = "https://github.com/yourusername/hoon-firewall-modules/issues"
-"Source" = "https://github.com/yourusername/hoon-firewall-modules"
+"Homepage" = "https://github.com/hunseop/fpat"
+"Bug Reports" = "https://github.com/hunseop/fpat/issues"
+"Source" = "https://github.com/hunseop/fpat"
 
 [tool.setuptools]
 py-modules = ["__init__"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["modules*"]
+include = ["fpat*"]
 
 [tool.setuptools.package-dir]
-"hoon_firewall_modules" = "."
+"fpat" = "."
 
 [tool.black]
 line-length = 88

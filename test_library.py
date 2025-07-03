@@ -20,16 +20,16 @@ def test_imports():
         
         # 모듈별 import 테스트
         print("3. 모듈별 import 테스트...")
-        import modules.policy_comparator as policy_comparator
-        import modules.firewall_module as firewall_module  
-        import modules.firewall_analyzer as firewall_analyzer
-        import modules.policy_deletion_processor as policy_deletion_processor
+        import fpat.policy_comparator as policy_comparator
+        import fpat.firewall_module as firewall_module  
+        import fpat.firewall_analyzer as firewall_analyzer
+        import fpat.policy_deletion_processor as policy_deletion_processor
         print("   ✅ 모든 서브모듈 import 성공")
         
         # 개별 모듈 클래스 테스트
         print("4. 개별 모듈 클래스 테스트...")
-        from modules.policy_comparator import PolicyComparator
-        from modules.firewall_analyzer import RedundancyAnalyzer
+        from fpat.policy_comparator import PolicyComparator
+        from fpat.firewall_analyzer import RedundancyAnalyzer
         print("   ✅ 개별 모듈 클래스 import 성공")
         
         return True
@@ -47,13 +47,13 @@ def test_basic_functionality():
         print("5. 기본 기능 테스트...")
         
         # PolicyComparator 인스턴스 생성 테스트
-        from modules.policy_comparator import PolicyComparator
+        from fpat.policy_comparator import PolicyComparator
         # 실제 파일이 없어도 인스턴스 생성은 가능해야 함
         comparator = PolicyComparator("test1.xlsx", "test2.xlsx", "test3.xlsx", "test4.xlsx")
         print("   ✅ PolicyComparator 인스턴스 생성 성공")
         
         # PolicyAnalyzer 인스턴스 생성 테스트
-        from modules.firewall_analyzer import PolicyAnalyzer
+        from fpat.firewall_analyzer import PolicyAnalyzer
         analyzer = PolicyAnalyzer()
         print("   ✅ PolicyAnalyzer 인스턴스 생성 성공")
         
