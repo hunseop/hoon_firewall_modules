@@ -25,6 +25,7 @@ except ImportError:
 
 from ..utils.config import Config
 from ..utils.logger import setup_logger
+from ..utils.completion import complete_vendors, complete_search_types, complete_file_extensions
 
 console = Console()
 logger = setup_logger()
@@ -40,11 +41,13 @@ app = typer.Typer(
 def redundancy(
     policy_file: str = typer.Option(
         ..., "--file", "-f",
-        help="분석할 정책 Excel 파일 경로"
+        help="분석할 정책 Excel 파일 경로",
+        autocompletion=complete_file_extensions
     ),
     vendor: str = typer.Option(
         "paloalto", "--vendor", "-v",
-        help="방화벽 벤더 (paloalto/ngf/mf2)"
+        help="방화벽 벤더 (paloalto/ngf/mf2)",
+        autocompletion=complete_vendors
     ),
     output_file: Optional[str] = typer.Option(
         None, "--output", "-o",
@@ -108,11 +111,13 @@ def redundancy(
 def shadow(
     policy_file: str = typer.Option(
         ..., "--file", "-f",
-        help="분석할 정책 Excel 파일 경로"
+        help="분석할 정책 Excel 파일 경로",
+        autocompletion=complete_file_extensions
     ),
     vendor: str = typer.Option(
         "paloalto", "--vendor", "-v", 
-        help="방화벽 벤더 (paloalto/ngf/mf2)"
+        help="방화벽 벤더 (paloalto/ngf/mf2)",
+        autocompletion=complete_vendors
     ),
     output_file: Optional[str] = typer.Option(
         None, "--output", "-o",
@@ -176,7 +181,8 @@ def shadow(
 def filter(
     policy_file: str = typer.Option(
         ..., "--file", "-f",
-        help="필터링할 정책 Excel 파일 경로"
+        help="필터링할 정책 Excel 파일 경로",
+        autocompletion=complete_file_extensions
     ),
     search_address: str = typer.Option(
         ..., "--address", "-a",
@@ -184,7 +190,8 @@ def filter(
     ),
     search_type: str = typer.Option(
         "both", "--type", "-t",
-        help="검색 유형 (source/destination/both)"
+        help="검색 유형 (source/destination/both)",
+        autocompletion=complete_search_types
     ),
     include_any: bool = typer.Option(
         True, "--include-any/--exclude-any",

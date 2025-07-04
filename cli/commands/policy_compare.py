@@ -18,6 +18,7 @@ except ImportError:
 
 from ..utils.config import Config
 from ..utils.logger import setup_logger
+from ..utils.completion import complete_file_extensions
 
 console = Console()
 logger = setup_logger()
@@ -33,11 +34,13 @@ app = typer.Typer(
 def policies(
     old_policy: str = typer.Option(
         ..., "--old", "-o",
-        help="이전 정책 Excel 파일 경로"
+        help="이전 정책 Excel 파일 경로",
+        autocompletion=complete_file_extensions
     ),
     new_policy: str = typer.Option(
         ..., "--new", "-n", 
-        help="새로운 정책 Excel 파일 경로"
+        help="새로운 정책 Excel 파일 경로",
+        autocompletion=complete_file_extensions
     ),
     output_file: Optional[str] = typer.Option(
         None, "--output", "-out",
@@ -103,11 +106,13 @@ def policies(
 def objects(
     old_objects: str = typer.Option(
         ..., "--old", "-o",
-        help="이전 객체 Excel 파일 경로"
+        help="이전 객체 Excel 파일 경로",
+        autocompletion=complete_file_extensions
     ),
     new_objects: str = typer.Option(
         ..., "--new", "-n",
-        help="새로운 객체 Excel 파일 경로"
+        help="새로운 객체 Excel 파일 경로",
+        autocompletion=complete_file_extensions
     ),
     output_file: Optional[str] = typer.Option(
         None, "--output", "-out",
@@ -173,19 +178,23 @@ def objects(
 def full(
     old_policy: str = typer.Option(
         ..., "--old-policy", "-op",
-        help="이전 정책 Excel 파일 경로"
+        help="이전 정책 Excel 파일 경로",
+        autocompletion=complete_file_extensions
     ),
     new_policy: str = typer.Option(
         ..., "--new-policy", "-np",
-        help="새로운 정책 Excel 파일 경로"
+        help="새로운 정책 Excel 파일 경로",
+        autocompletion=complete_file_extensions
     ),
     old_objects: str = typer.Option(
         ..., "--old-objects", "-oo",
-        help="이전 객체 Excel 파일 경로"
+        help="이전 객체 Excel 파일 경로",
+        autocompletion=complete_file_extensions
     ),
     new_objects: str = typer.Option(
         ..., "--new-objects", "-no",
-        help="새로운 객체 Excel 파일 경로"
+        help="새로운 객체 Excel 파일 경로",
+        autocompletion=complete_file_extensions
     ),
     output_file: Optional[str] = typer.Option(
         None, "--output", "-out",

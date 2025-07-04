@@ -12,14 +12,28 @@ pip install -r requirements.txt
 
 ## 🚀 빠른 시작
 
-### 1. 메뉴 보기
+### 1. 🎯 대화형 모드 (추천)
 ```bash
-python fpat_cli.py menu
+python3 fpat_cli.py interactive
 ```
 
-### 2. 도움말 확인
+### 2. 📋 메뉴 보기
 ```bash
-python fpat_cli.py --help
+python3 fpat_cli.py menu
+```
+
+### 3. ⚡ 자동완성 설정
+```bash
+# 자동으로 설치
+python3 fpat_cli.py --install-completion
+
+# 수동 설정 방법 보기
+python3 fpat_cli.py completion
+```
+
+### 4. 도움말 확인
+```bash
+python3 fpat_cli.py --help
 ```
 
 ## 🛡️ 방화벽 연동 (firewall)
@@ -156,32 +170,68 @@ python fpat_cli.py deletion analyze \
 
 ## 🎨 고급 기능
 
+### 🎯 대화형 모드 (Interactive Mode)
+```bash
+# 전체 기능을 대화형으로 사용
+python3 fpat_cli.py interactive
+```
+- 📋 메뉴 기반 선택
+- 🔍 자동 파일 검색 및 선택
+- ✅ 단계별 안내
+- 🎨 아름다운 UI
+
+### ⚡ 자동완성 (Tab Completion)
+```bash
+# 1단계: 자동완성 설치
+python3 fpat_cli.py --install-completion
+
+# 2단계: 새 터미널 열기 또는 reload
+source ~/.bashrc
+
+# 3단계: Tab 키로 자동완성 사용!
+python3 fpat_cli.py fire[TAB]    # → firewall
+python3 fpat_cli.py firewall [TAB]    # → add, collect, list
+```
+
+#### 자동완성 지원 항목:
+- ✅ **명령어**: `firewall`, `analyze`, `compare`, `deletion`
+- ✅ **방화벽 이름**: 저장된 방화벽 목록 자동완성
+- ✅ **벤더**: `paloalto`, `ngf`, `mf2`, `mock`
+- ✅ **파일명**: 현재 디렉토리의 `.xlsx`, `.xls` 파일
+- ✅ **검색 타입**: `source`, `destination`, `both`
+
 ### Verbose 모드
 ```bash
-python fpat_cli.py -v analyze redundancy --file "policies.xlsx"
+python3 fpat_cli.py -v analyze redundancy --file "policies.xlsx"
 ```
 
 ### 사용자 정의 설정 파일
 ```bash
-python fpat_cli.py --config "/path/to/config.json" firewall list
+python3 fpat_cli.py --config "/path/to/config.json" firewall list
 ```
 
 ### 버전 확인
 ```bash
-python fpat_cli.py version
+python3 fpat_cli.py version
 ```
 
 ## 💡 사용 팁
 
-1. **대화형 메뉴**: `python fpat_cli.py menu` 명령어로 사용 가능한 모든 기능을 확인할 수 있습니다.
+1. **🎯 대화형 모드 우선 사용**: `python3 fpat_cli.py interactive` 명령어로 모든 기능을 편리하게 사용할 수 있습니다.
 
-2. **자동완성**: 각 명령어에 `--help`를 붙이면 상세한 도움말을 볼 수 있습니다.
+2. **⚡ 자동완성 활용**: Tab 키를 눌러 명령어, 파일명, 옵션을 자동완성하세요.
 
-3. **결과 확인**: 모든 작업 완료 후 결과 요약이 화면에 표시됩니다.
+3. **📋 메뉴 활용**: `python3 fpat_cli.py menu` 명령어로 사용 가능한 모든 기능을 확인할 수 있습니다.
 
-4. **진행률 표시**: 시간이 오래 걸리는 작업들은 실시간 진행률을 표시합니다.
+4. **📖 도움말**: 각 명령어에 `--help`를 붙이면 상세한 도움말을 볼 수 있습니다.
 
-5. **오류 처리**: 상세한 오류 메시지와 해결 방법이 제공됩니다.
+5. **📊 결과 확인**: 모든 작업 완료 후 결과 요약이 화면에 표시됩니다.
+
+6. **⏱️ 진행률 표시**: 시간이 오래 걸리는 작업들은 실시간 진행률을 표시합니다.
+
+7. **🔧 오류 처리**: 상세한 오류 메시지와 해결 방법이 제공됩니다.
+
+8. **🎨 Rich UI**: 컬러풀하고 구조화된 출력으로 정보를 쉽게 파악할 수 있습니다.
 
 ## 🔧 문제 해결
 

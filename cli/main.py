@@ -15,6 +15,10 @@ from rich import box
 from .commands import firewall, policy_compare, analyzer, deletion
 from .utils.config import Config
 from .utils.logger import setup_logger
+from .utils.completion import setup_shell_completion
+from .utils.interactive import (
+    interactive_main_menu, show_success_message, show_error_message
+)
 
 # 콘솔 초기화
 console = Console()
@@ -25,7 +29,7 @@ app = typer.Typer(
     name="fpat",
     help="🔥 Firewall Policy Analysis Tool - 방화벽 정책 분석 및 관리 도구",
     rich_markup_mode="rich",
-    add_completion=False,
+    add_completion=True,  # 자동완성 활성화
     no_args_is_help=True
 )
 
@@ -82,6 +86,67 @@ def menu():
     show_main_menu()
 
 
+@app.command()
+def completion():
+    """Shell 자동완성 설정 방법을 표시합니다."""
+    instructions = setup_shell_completion()
+    console.print(Panel(instructions, title="⚡ 자동완성 설정", border_style="yellow"))
+
+
+@app.command()
+def interactive():
+    """대화형 모드로 CLI를 실행합니다."""
+    try:
+        run_interactive_mode()
+    except KeyboardInterrupt:
+        console.print("\n[yellow]👋 대화형 모드를 종료합니다.[/yellow]")
+    except Exception as e:
+        show_error_message(f"오류가 발생했습니다: {e}")
+
+
+def run_interactive_mode():
+    """대화형 모드 실행"""
+    console.clear()
+    
+    while True:
+        choice = interactive_main_menu()
+        
+        if not choice or choice == "exit":
+            console.print("[green]👋 FPAT CLI를 종료합니다. 안녕히 가세요![/green]")
+            break
+        
+        if choice == "firewall":
+            from .commands.firewall import run_interactive_firewall
+            run_interactive_firewall()
+        elif choice == "compare":
+            from .commands.policy_compare import run_interactive_compare
+            run_interactive_compare()
+        elif choice == "analyze":
+            from .commands.analyzer import run_interactive_analyze
+            run_interactive_analyze()
+        elif choice == "deletion":
+            from .commands.deletion import run_interactive_deletion
+            run_interactive_deletion()
+        elif choice == "completion":
+            instructions = setup_shell_completion()
+            console.print(Panel(instructions, title="⚡ 자동완성 설정", border_style="yellow"))
+        elif choice == "version":
+            from . import __version__, __author__
+            version_panel = Panel(
+                f"[bold blue]FPAT CLI[/bold blue] v{__version__}\n"
+                f"[dim]작성자: {__author__}[/dim]\n"
+                f"[dim]방화벽 정책 분석 도구[/dim]",
+                title="📋 Version Info",
+                border_style="blue"
+            )
+            console.print(version_panel)
+        
+        # 계속 진행할지 확인
+        from .utils.interactive import confirm_action
+        if not confirm_action("계속 진행하시겠습니까?"):
+            break
+
+
 def show_main_menu():
     """메인 메뉴를 표시합니다."""
     console.clear()
@@ -103,10 +168,12 @@ def show_main_menu():
     
     # 메뉴 항목 추가
     menu_items = [
+        ("interactive", "🎯 대화형 모드 (추천)", "fpat interactive"),
         ("firewall", "방화벽 연동 및 데이터 수집", "fpat firewall collect --help"),
         ("compare", "정책 및 객체 비교 분석", "fpat compare policies --help"),
         ("analyze", "정책 분석 (중복성, Shadow 등)", "fpat analyze redundancy --help"),
         ("deletion", "정책 삭제 영향도 분석", "fpat deletion analyze --help"),
+        ("completion", "자동완성 설정 방법", "fpat completion"),
         ("version", "버전 정보 표시", "fpat version"),
         ("--help", "도움말 표시", "fpat --help")
     ]

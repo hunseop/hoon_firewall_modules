@@ -19,6 +19,7 @@ except ImportError:
 
 from ..utils.config import Config, FirewallConfig
 from ..utils.logger import setup_logger
+from ..utils.completion import complete_firewall_names, complete_vendors
 
 console = Console()
 logger = setup_logger()
@@ -34,7 +35,8 @@ app = typer.Typer(
 def collect(
     firewall_name: str = typer.Option(
         ..., "--name", "-n",
-        help="방화벽 설정 이름"
+        help="방화벽 설정 이름",
+        autocompletion=complete_firewall_names
     ),
     output_file: Optional[str] = typer.Option(
         None, "--output", "-o",
@@ -132,7 +134,8 @@ def add(
     password: str = typer.Option(..., "--password", "-p", help="비밀번호"),
     vendor: str = typer.Option(
         ..., "--vendor", "-v",
-        help="방화벽 벤더 (paloalto/ngf/mf2)"
+        help="방화벽 벤더 (paloalto/ngf/mf2)",
+        autocompletion=complete_vendors
     )
 ):
     """새로운 방화벽 설정을 추가합니다."""

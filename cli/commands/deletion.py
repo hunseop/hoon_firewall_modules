@@ -22,6 +22,7 @@ except ImportError:
 
 from ..utils.config import Config
 from ..utils.logger import setup_logger
+from ..utils.completion import complete_file_extensions
 
 console = Console()
 logger = setup_logger()
@@ -37,7 +38,8 @@ app = typer.Typer(
 def analyze(
     policy_file: str = typer.Option(
         ..., "--file", "-f",
-        help="분석할 정책 Excel 파일 경로"
+        help="분석할 정책 Excel 파일 경로",
+        autocompletion=complete_file_extensions
     ),
     policy_names: str = typer.Option(
         ..., "--policies", "-p",
