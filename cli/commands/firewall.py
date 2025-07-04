@@ -53,76 +53,10 @@ def collect(
 ):
     """방화벽에서 정책과 객체 데이터를 수집합니다."""
     
-    if not FirewallCollectorFactory:
-        console.print("[red]❌ FPAT 모듈을 찾을 수 없습니다. 먼저 FPAT를 설치하세요.[/red]")
-        raise typer.Exit(1)
+    # execute_collect 헬퍼 함수 호출
+    success = execute_collect(firewall_name, output_file, collect_policies, collect_objects)
     
-    config = Config()
-    firewall_config = config.get_firewall(firewall_name)
-    
-    if not firewall_config:
-        console.print(f"[red]❌ '{firewall_name}' 방화벽 설정을 찾을 수 없습니다.[/red]")
-        console.print("[yellow]💡 'fpat firewall add' 명령어로 방화벽을 추가하세요.[/yellow]")
-        raise typer.Exit(1)
-    
-    try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            
-            # 방화벽 연결
-            task1 = progress.add_task("방화벽에 연결 중...", total=None)
-            collector = FirewallCollectorFactory.get_collector(
-                source_type=firewall_config.vendor,
-                hostname=firewall_config.hostname,
-                username=firewall_config.username,
-                password=firewall_config.password
-            )
-            progress.update(task1, description="✅ 방화벽 연결 완료")
-            
-            data = {}
-            
-            # 정책 수집
-            if collect_policies:
-                task2 = progress.add_task("보안 정책 수집 중...", total=None)
-                data['policies'] = collector.export_security_rules()
-                progress.update(task2, description="✅ 보안 정책 수집 완료")
-            
-            # 객체 수집
-            if collect_objects:
-                task3 = progress.add_task("네트워크 객체 수집 중...", total=None)
-                data['objects'] = collector.export_network_objects()
-                progress.update(task3, description="✅ 네트워크 객체 수집 완료")
-            
-            # Excel 저장
-            if not output_file:
-                output_file = f"{firewall_name}_collected_data.xlsx"
-            
-            output_path = Path(config.get_output_dir()) / output_file
-            task4 = progress.add_task("Excel 파일 저장 중...", total=None)
-            
-            # 데이터를 Excel로 저장
-            export_policy_to_excel(data, str(output_path))
-            progress.update(task4, description="✅ Excel 파일 저장 완료")
-        
-        # 성공 메시지
-        success_panel = Panel(
-            f"[green]✅ 데이터 수집이 완료되었습니다![/green]\n\n"
-            f"[bold]저장 위치:[/bold] {output_path}\n"
-            f"[bold]방화벽:[/bold] {firewall_name} ({firewall_config.vendor})\n"
-            f"[bold]수집 항목:[/bold] "
-            f"{'정책 ' if collect_policies else ''}"
-            f"{'객체 ' if collect_objects else ''}",
-            title="🎉 수집 완료",
-            border_style="green"
-        )
-        console.print(success_panel)
-        
-    except Exception as e:
-        logger.error(f"데이터 수집 중 오류 발생: {e}")
-        console.print(f"[red]❌ 오류: {e}[/red]")
+    if not success:
         raise typer.Exit(1)
 
 
@@ -201,7 +135,7 @@ def execute_collect(firewall_name: str, output_file: Optional[str] = None,
                    collect_policies: bool = True, collect_objects: bool = True):
     """Interactive 모드용 데이터 수집 함수"""
     
-    if not FirewallCollectorFactory:
+    if not export_policy_to_excel:
         console.print("[red]❌ FPAT 모듈을 찾을 수 없습니다. 먼저 FPAT를 설치하세요.[/red]")
         return False
     
@@ -213,54 +147,56 @@ def execute_collect(firewall_name: str, output_file: Optional[str] = None,
         console.print("[yellow]💡 'fpat firewall add' 명령어로 방화벽을 추가하세요.[/yellow]")
         return False
     
+    # export_type 결정
+    if collect_policies and collect_objects:
+        export_type = "all"
+        type_description = "정책, 객체, 서비스 등 모든 항목"
+    elif collect_policies:
+        export_type = "policy"
+        type_description = "보안 정책"
+    elif collect_objects:
+        export_type = "address"
+        type_description = "네트워크 객체"
+    else:
+        console.print("[yellow]⚠️ 수집할 항목을 선택해주세요.[/yellow]")
+        return False
+    
     try:
+        # 출력 파일 경로 설정
+        final_output_file = output_file or f"{firewall_name}_collected_data.xlsx"
+        output_path = Path(config.get_output_dir()) / final_output_file
+        
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console
         ) as progress:
             
-            # 방화벽 연결
-            task1 = progress.add_task("방화벽에 연결 중...", total=None)
-            collector = FirewallCollectorFactory.get_collector(
-                source_type=firewall_config.vendor,
+            task = progress.add_task(f"{type_description} 수집 중...", total=None)
+            
+            # 진행률 콜백 함수
+            def progress_callback(current: int, total: int):
+                progress.update(task, description=f"[{current}/{total}] 데이터 처리 중...")
+            
+            # export_policy_to_excel로 직접 처리
+            result_path = export_policy_to_excel(
+                vendor=firewall_config.vendor,
                 hostname=firewall_config.hostname,
                 username=firewall_config.username,
-                password=firewall_config.password
+                password=firewall_config.password,
+                export_type=export_type,
+                output_path=str(output_path),
+                progress_callback=progress_callback
             )
-            progress.update(task1, description="✅ 방화벽 연결 완료")
             
-            data = {}
-            
-            # 정책 수집
-            if collect_policies:
-                task2 = progress.add_task("보안 정책 수집 중...", total=None)
-                data['policies'] = collector.export_security_rules()
-                progress.update(task2, description="✅ 보안 정책 수집 완료")
-            
-            # 객체 수집
-            if collect_objects:
-                task3 = progress.add_task("네트워크 객체 수집 중...", total=None)
-                data['objects'] = collector.export_network_objects()
-                progress.update(task3, description="✅ 네트워크 객체 수집 완료")
-            
-            # Excel 저장
-            final_output_file = output_file or f"{firewall_name}_collected_data.xlsx"
-            output_path = Path(config.get_output_dir()) / final_output_file
-            task4 = progress.add_task("Excel 파일 저장 중...", total=None)
-            
-            # 데이터를 Excel로 저장
-            export_policy_to_excel(data, str(output_path))
-            progress.update(task4, description="✅ Excel 파일 저장 완료")
+            progress.update(task, description="✅ 데이터 수집 및 저장 완료")
         
         # 성공 메시지
         success_panel = Panel(
             f"[green]✅ 데이터 수집이 완료되었습니다![/green]\n\n"
-            f"[bold]저장 위치:[/bold] {output_path}\n"
+            f"[bold]저장 위치:[/bold] {result_path}\n"
             f"[bold]방화벽:[/bold] {firewall_name} ({firewall_config.vendor})\n"
-            f"[bold]수집 항목:[/bold] "
-            f"{'정책 ' if collect_policies else ''}"
-            f"{'객체 ' if collect_objects else ''}",
+            f"[bold]수집 항목:[/bold] {type_description}",
             title="🎉 수집 완료",
             border_style="green"
         )
