@@ -194,3 +194,124 @@ def list():
         )
     
     console.print(table)
+
+
+# Interactive 모드용 헬퍼 함수들
+def execute_collect(firewall_name: str, output_file: Optional[str] = None, 
+                   collect_policies: bool = True, collect_objects: bool = True):
+    """Interactive 모드용 데이터 수집 함수"""
+    
+    if not FirewallCollectorFactory:
+        console.print("[red]❌ FPAT 모듈을 찾을 수 없습니다. 먼저 FPAT를 설치하세요.[/red]")
+        return False
+    
+    config = Config()
+    firewall_config = config.get_firewall(firewall_name)
+    
+    if not firewall_config:
+        console.print(f"[red]❌ '{firewall_name}' 방화벽 설정을 찾을 수 없습니다.[/red]")
+        console.print("[yellow]💡 'fpat firewall add' 명령어로 방화벽을 추가하세요.[/yellow]")
+        return False
+    
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            
+            # 방화벽 연결
+            task1 = progress.add_task("방화벽에 연결 중...", total=None)
+            collector = FirewallCollectorFactory.get_collector(
+                source_type=firewall_config.vendor,
+                hostname=firewall_config.hostname,
+                username=firewall_config.username,
+                password=firewall_config.password
+            )
+            progress.update(task1, description="✅ 방화벽 연결 완료")
+            
+            data = {}
+            
+            # 정책 수집
+            if collect_policies:
+                task2 = progress.add_task("보안 정책 수집 중...", total=None)
+                data['policies'] = collector.export_security_rules()
+                progress.update(task2, description="✅ 보안 정책 수집 완료")
+            
+            # 객체 수집
+            if collect_objects:
+                task3 = progress.add_task("네트워크 객체 수집 중...", total=None)
+                data['objects'] = collector.export_network_objects()
+                progress.update(task3, description="✅ 네트워크 객체 수집 완료")
+            
+            # Excel 저장
+            final_output_file = output_file or f"{firewall_name}_collected_data.xlsx"
+            output_path = Path(config.get_output_dir()) / final_output_file
+            task4 = progress.add_task("Excel 파일 저장 중...", total=None)
+            
+            # 데이터를 Excel로 저장
+            export_policy_to_excel(data, str(output_path))
+            progress.update(task4, description="✅ Excel 파일 저장 완료")
+        
+        # 성공 메시지
+        success_panel = Panel(
+            f"[green]✅ 데이터 수집이 완료되었습니다![/green]\n\n"
+            f"[bold]저장 위치:[/bold] {output_path}\n"
+            f"[bold]방화벽:[/bold] {firewall_name} ({firewall_config.vendor})\n"
+            f"[bold]수집 항목:[/bold] "
+            f"{'정책 ' if collect_policies else ''}"
+            f"{'객체 ' if collect_objects else ''}",
+            title="🎉 수집 완료",
+            border_style="green"
+        )
+        console.print(success_panel)
+        return True
+        
+    except Exception as e:
+        logger.error(f"데이터 수집 중 오류 발생: {e}")
+        console.print(f"[red]❌ 오류: {e}[/red]")
+        return False
+
+
+def execute_add_firewall(name: str, hostname: str, username: str, 
+                        password: str, vendor: str):
+    """Interactive 모드용 방화벽 추가 함수"""
+    
+    # 벤더 검증
+    valid_vendors = ["paloalto", "ngf", "mf2", "mock"]
+    if vendor not in valid_vendors:
+        console.print(f"[red]❌ 지원하지 않는 벤더입니다. 사용 가능한 벤더: {', '.join(valid_vendors)}[/red]")
+        return False
+    
+    config = Config()
+    firewall_config = FirewallConfig(
+        hostname=hostname,
+        username=username,
+        password=password,
+        vendor=vendor
+    )
+    
+    try:
+        config.add_firewall(name, firewall_config)
+        
+        success_panel = Panel(
+            f"[green]✅ 방화벽 설정이 추가되었습니다![/green]\n\n"
+            f"[bold]이름:[/bold] {name}\n"
+            f"[bold]호스트:[/bold] {hostname}\n"
+            f"[bold]벤더:[/bold] {vendor}",
+            title="🛡️ 방화벽 추가",
+            border_style="green"
+        )
+        console.print(success_panel)
+        return True
+        
+    except Exception as e:
+        logger.error(f"방화벽 추가 중 오류 발생: {e}")
+        console.print(f"[red]❌ 오류: {e}[/red]")
+        return False
+
+
+def get_firewall_list():
+    """저장된 방화벽 목록을 반환"""
+    config = Config()
+    return config.config.firewalls

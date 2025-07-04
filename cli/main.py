@@ -173,18 +173,21 @@ def run_interactive_firewall():
         if choice == "add":
             fw_data = interactive_firewall_add()
             if fw_data:
-                try:
-                    config = Config()
-                    from .utils.config import FirewallConfig
-                    fw_config = FirewallConfig(**{k: v for k, v in fw_data.items() if k != "name"})
-                    config.add_firewall(fw_data["name"], fw_config)
-                    show_success_message(f"방화벽 '{fw_data['name']}'이 추가되었습니다!")
-                except Exception as e:
-                    show_error_message(f"방화벽 추가 중 오류: {e}")
+                # 실제 방화벽 추가 로직 호출
+                from .commands.firewall import execute_add_firewall
+                success = execute_add_firewall(
+                    fw_data["name"],
+                    fw_data["hostname"],
+                    fw_data["username"],
+                    fw_data["password"],
+                    fw_data["vendor"]
+                )
+                if not success:
+                    show_error_message("방화벽 추가 중 오류가 발생했습니다.")
         
         elif choice == "list":
-            config = Config()
-            firewalls = config.config.firewalls
+            from .commands.firewall import get_firewall_list
+            firewalls = get_firewall_list()
             if not firewalls:
                 show_info_message("저장된 방화벽이 없습니다.")
             else:
@@ -201,8 +204,13 @@ def run_interactive_firewall():
             fw_name = interactive_firewall_selector()
             if fw_name:
                 show_info_message(f"'{fw_name}' 방화벽에서 데이터를 수집합니다...")
-                # 실제 수집 로직은 기존 firewall.collect 함수 활용
-                show_info_message("데이터 수집 기능은 개발 중입니다.")
+                # 실제 수집 로직 호출
+                from .commands.firewall import execute_collect
+                success = execute_collect(fw_name)
+                if success:
+                    show_success_message("데이터 수집이 완료되었습니다!")
+                else:
+                    show_error_message("데이터 수집 중 오류가 발생했습니다.")
 
 
 def run_interactive_compare():
@@ -219,7 +227,13 @@ def run_interactive_compare():
                 new_file = interactive_file_selector("새로운 정책 파일을 선택하세요")
                 if new_file:
                     show_info_message(f"정책 비교: {old_file} vs {new_file}")
-                    show_info_message("정책 비교 기능은 개발 중입니다.")
+                    # 실제 정책 비교 로직 호출
+                    from .commands.policy_compare import execute_policy_compare
+                    success = execute_policy_compare(old_file, new_file)
+                    if success:
+                        show_success_message("정책 비교 분석이 완료되었습니다!")
+                    else:
+                        show_error_message("정책 비교 중 오류가 발생했습니다.")
         
         elif choice == "objects":
             old_file = interactive_file_selector("이전 객체 파일을 선택하세요")
@@ -227,11 +241,36 @@ def run_interactive_compare():
                 new_file = interactive_file_selector("새로운 객체 파일을 선택하세요")
                 if new_file:
                     show_info_message(f"객체 비교: {old_file} vs {new_file}")
-                    show_info_message("객체 비교 기능은 개발 중입니다.")
+                    # 실제 객체 비교 로직 호출
+                    from .commands.policy_compare import execute_object_compare
+                    success = execute_object_compare(old_file, new_file)
+                    if success:
+                        show_success_message("객체 비교 분석이 완료되었습니다!")
+                    else:
+                        show_error_message("객체 비교 중 오류가 발생했습니다.")
         
         elif choice == "full":
             show_info_message("전체 비교 기능을 실행합니다...")
-            show_info_message("전체 비교 기능은 개발 중입니다.")
+            old_policy = interactive_file_selector("이전 정책 파일을 선택하세요")
+            if old_policy:
+                new_policy = interactive_file_selector("새로운 정책 파일을 선택하세요")
+                if new_policy:
+                    old_objects = interactive_file_selector("이전 객체 파일을 선택하세요")
+                    if old_objects:
+                        new_objects = interactive_file_selector("새로운 객체 파일을 선택하세요")
+                        if new_objects:
+                            show_info_message("전체 비교 분석을 시작합니다...")
+                            # 정책 비교
+                            from .commands.policy_compare import execute_policy_compare
+                            policy_success = execute_policy_compare(old_policy, new_policy, "full_policy_comparison.xlsx")
+                            # 객체 비교
+                            from .commands.policy_compare import execute_object_compare
+                            object_success = execute_object_compare(old_objects, new_objects, "full_object_comparison.xlsx")
+                            
+                            if policy_success and object_success:
+                                show_success_message("전체 비교 분석이 완료되었습니다!")
+                            else:
+                                show_error_message("전체 비교 중 일부 오류가 발생했습니다.")
 
 
 def run_interactive_analyze():
@@ -248,7 +287,13 @@ def run_interactive_analyze():
                 vendor = interactive_vendor_selector()
                 if vendor:
                     show_info_message(f"중복성 분석: {policy_file} ({vendor})")
-                    show_info_message("중복성 분석 기능은 개발 중입니다.")
+                    # 실제 중복성 분석 로직 호출
+                    from .commands.analyzer import execute_redundancy_analysis
+                    success = execute_redundancy_analysis(policy_file, vendor)
+                    if success:
+                        show_success_message("중복성 분석이 완료되었습니다!")
+                    else:
+                        show_error_message("중복성 분석 중 오류가 발생했습니다.")
         
         elif choice == "shadow":
             policy_file = interactive_file_selector("분석할 정책 파일을 선택하세요")
@@ -256,7 +301,13 @@ def run_interactive_analyze():
                 vendor = interactive_vendor_selector()
                 if vendor:
                     show_info_message(f"Shadow 분석: {policy_file} ({vendor})")
-                    show_info_message("Shadow 분석 기능은 개발 중입니다.")
+                    # 실제 Shadow 분석 로직 호출
+                    from .commands.analyzer import execute_shadow_analysis
+                    success = execute_shadow_analysis(policy_file, vendor)
+                    if success:
+                        show_success_message("Shadow 분석이 완료되었습니다!")
+                    else:
+                        show_error_message("Shadow 분석 중 오류가 발생했습니다.")
         
         elif choice == "filter":
             policy_file = interactive_file_selector("필터링할 정책 파일을 선택하세요")
@@ -267,7 +318,13 @@ def run_interactive_analyze():
                     search_type = interactive_search_type_selector()
                     if search_type:
                         show_info_message(f"IP 필터링: {policy_file}, {address} ({search_type})")
-                        show_info_message("IP 필터링 기능은 개발 중입니다.")
+                        # 실제 IP 필터링 로직 호출
+                        from .commands.analyzer import execute_policy_filter
+                        success = execute_policy_filter(policy_file, address, search_type)
+                        if success:
+                            show_success_message("IP 필터링이 완료되었습니다!")
+                        else:
+                            show_error_message("IP 필터링 중 오류가 발생했습니다.")
 
 
 def run_interactive_deletion():
@@ -279,7 +336,13 @@ def run_interactive_deletion():
         if policies:
             show_info_message(f"삭제 영향도 분석: {policy_file}")
             show_info_message(f"대상 정책: {policies}")
-            show_info_message("삭제 영향도 분석 기능은 개발 중입니다.")
+            # 실제 삭제 영향도 분석 로직 호출
+            from .commands.deletion import execute_deletion_analysis
+            success = execute_deletion_analysis(policy_file, policies)
+            if success:
+                show_success_message("삭제 영향도 분석이 완료되었습니다!")
+            else:
+                show_error_message("삭제 영향도 분석 중 오류가 발생했습니다.")
 
 
 def show_main_menu():

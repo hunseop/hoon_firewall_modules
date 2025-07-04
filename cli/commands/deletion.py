@@ -148,3 +148,53 @@ def get_impact_description(key: str) -> str:
         "recommendations": "권장사항"
     }
     return descriptions.get(key, "분석 결과")
+
+
+# Interactive 모드용 헬퍼 함수들
+def execute_deletion_analysis(policy_file: str, policy_names: str, output_file: Optional[str] = None):
+    """Interactive 모드용 삭제 영향도 분석 함수"""
+    
+    if not policy_usage_processor:
+        console.print("[red]❌ FPAT 삭제 프로세서 모듈을 찾을 수 없습니다.[/red]")
+        return False
+    
+    if not Path(policy_file).exists():
+        console.print(f"[red]❌ 정책 파일을 찾을 수 없습니다: {policy_file}[/red]")
+        return False
+    
+    config = Config()
+    policy_list = [name.strip() for name in policy_names.split(',')]
+    
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            
+            # 파일 로딩
+            task1 = progress.add_task("정책 파일 로딩 중...", total=None)
+            df = pd.read_excel(policy_file)
+            progress.update(task1, description="✅ 정책 파일 로딩 완료")
+            
+            # 삭제 영향도 분석
+            task2 = progress.add_task("삭제 영향도 분석 중...", total=None)
+            results = policy_usage_processor.analyze_deletion_impact(df, policy_list)
+            progress.update(task2, description="✅ 삭제 영향도 분석 완료")
+            
+            # 결과 저장
+            final_output_file = output_file or "deletion_impact_analysis.xlsx"
+            output_path = Path(config.get_output_dir()) / final_output_file
+            task3 = progress.add_task("결과 Excel 저장 중...", total=None)
+            
+            excel_manager.save_deletion_results(results, str(output_path))
+            progress.update(task3, description="✅ 결과 저장 완료")
+        
+        # 결과 요약 표시
+        show_deletion_summary(results, output_path, policy_list)
+        return True
+        
+    except Exception as e:
+        logger.error(f"삭제 영향도 분석 중 오류 발생: {e}")
+        console.print(f"[red]❌ 오류: {e}[/red]")
+        return False

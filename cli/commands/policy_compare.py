@@ -313,3 +313,114 @@ def get_sheet_description(sheet_name: str) -> str:
         "objects_modified": "수정된 객체"
     }
     return descriptions.get(sheet_name, "분석 결과")
+
+
+# Interactive 모드용 헬퍼 함수들
+def execute_policy_compare(old_policy: str, new_policy: str, output_file: Optional[str] = None):
+    """Interactive 모드용 정책 비교 함수"""
+    
+    if not PolicyComparator:
+        console.print("[red]❌ FPAT 모듈을 찾을 수 없습니다.[/red]")
+        return False
+    
+    # 파일 존재 확인
+    if not Path(old_policy).exists():
+        console.print(f"[red]❌ 이전 정책 파일을 찾을 수 없습니다: {old_policy}[/red]")
+        return False
+    
+    if not Path(new_policy).exists():
+        console.print(f"[red]❌ 새로운 정책 파일을 찾을 수 없습니다: {new_policy}[/red]")
+        return False
+    
+    config = Config()
+    
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            
+            # 비교기 초기화
+            task1 = progress.add_task("정책 파일 로딩 중...", total=None)
+            comparator = PolicyComparator(
+                policy_old=old_policy,
+                policy_new=new_policy
+            )
+            progress.update(task1, description="✅ 정책 파일 로딩 완료")
+            
+            # 정책 비교
+            task2 = progress.add_task("정책 변경사항 분석 중...", total=None)
+            results = comparator.compare_policies()
+            progress.update(task2, description="✅ 정책 비교 완료")
+            
+            # 결과 저장
+            final_output_file = output_file or "policy_comparison_result.xlsx"
+            output_path = Path(config.get_output_dir()) / final_output_file
+            task3 = progress.add_task("결과 Excel 저장 중...", total=None)
+            save_results_to_excel(results, str(output_path))
+            progress.update(task3, description="✅ 결과 저장 완료")
+        
+        # 결과 요약 표시
+        show_comparison_summary(results, output_path)
+        return True
+        
+    except Exception as e:
+        logger.error(f"정책 비교 중 오류 발생: {e}")
+        console.print(f"[red]❌ 오류: {e}[/red]")
+        return False
+
+
+def execute_object_compare(old_objects: str, new_objects: str, output_file: Optional[str] = None):
+    """Interactive 모드용 객체 비교 함수"""
+    
+    if not PolicyComparator:
+        console.print("[red]❌ FPAT 모듈을 찾을 수 없습니다.[/red]")
+        return False
+    
+    # 파일 존재 확인
+    if not Path(old_objects).exists():
+        console.print(f"[red]❌ 이전 객체 파일을 찾을 수 없습니다: {old_objects}[/red]")
+        return False
+    
+    if not Path(new_objects).exists():
+        console.print(f"[red]❌ 새로운 객체 파일을 찾을 수 없습니다: {new_objects}[/red]")
+        return False
+    
+    config = Config()
+    
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            
+            # 비교기 초기화
+            task1 = progress.add_task("객체 파일 로딩 중...", total=None)
+            comparator = PolicyComparator(
+                object_old=old_objects,
+                object_new=new_objects
+            )
+            progress.update(task1, description="✅ 객체 파일 로딩 완료")
+            
+            # 객체 비교
+            task2 = progress.add_task("객체 변경사항 분석 중...", total=None)
+            results = comparator.compare_all_objects()
+            progress.update(task2, description="✅ 객체 비교 완료")
+            
+            # 결과 저장
+            final_output_file = output_file or "object_comparison_result.xlsx"
+            output_path = Path(config.get_output_dir()) / final_output_file
+            task3 = progress.add_task("결과 Excel 저장 중...", total=None)
+            save_results_to_excel(results, str(output_path))
+            progress.update(task3, description="✅ 결과 저장 완료")
+        
+        # 결과 요약 표시
+        show_comparison_summary(results, output_path)
+        return True
+        
+    except Exception as e:
+        logger.error(f"객체 비교 중 오류 발생: {e}")
+        console.print(f"[red]❌ 오류: {e}[/red]")
+        return False

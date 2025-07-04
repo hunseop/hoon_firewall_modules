@@ -330,3 +330,192 @@ def show_filter_summary(summary: dict, output_path: Path):
         border_style="green"
     )
     console.print(success_panel)
+
+
+# Interactive 모드용 헬퍼 함수들
+def execute_redundancy_analysis(policy_file: str, vendor: str = "paloalto", output_file: Optional[str] = None):
+    """Interactive 모드용 중복성 분석 함수"""
+    
+    if not RedundancyAnalyzer:
+        console.print("[red]❌ FPAT 모듈을 찾을 수 없습니다.[/red]")
+        return False
+    
+    if not Path(policy_file).exists():
+        console.print(f"[red]❌ 정책 파일을 찾을 수 없습니다: {policy_file}[/red]")
+        return False
+    
+    config = Config()
+    
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            
+            # 파일 로딩
+            task1 = progress.add_task("정책 파일 로딩 중...", total=None)
+            df = pd.read_excel(policy_file)
+            progress.update(task1, description="✅ 정책 파일 로딩 완료")
+            
+            # 중복성 분석
+            task2 = progress.add_task("중복성 분석 중...", total=None)
+            analyzer = RedundancyAnalyzer()
+            results = analyzer.analyze(df, vendor=vendor)
+            progress.update(task2, description="✅ 중복성 분석 완료")
+            
+            # 결과 저장
+            final_output_file = output_file or f"redundancy_analysis_{vendor}.xlsx"
+            output_path = Path(config.get_output_dir()) / final_output_file
+            task3 = progress.add_task("결과 Excel 저장 중...", total=None)
+            
+            with pd.ExcelWriter(str(output_path), engine='openpyxl') as writer:
+                for sheet_name, data in results.items():
+                    if isinstance(data, pd.DataFrame):
+                        data.to_excel(writer, sheet_name=sheet_name, index=False)
+            
+            progress.update(task3, description="✅ 결과 저장 완료")
+        
+        # 결과 요약 표시
+        show_analysis_summary(results, output_path, "중복성 분석")
+        return True
+        
+    except Exception as e:
+        logger.error(f"중복성 분석 중 오류 발생: {e}")
+        console.print(f"[red]❌ 오류: {e}[/red]")
+        return False
+
+
+def execute_shadow_analysis(policy_file: str, vendor: str = "paloalto", output_file: Optional[str] = None):
+    """Interactive 모드용 Shadow 분석 함수"""
+    
+    if not ShadowAnalyzer:
+        console.print("[red]❌ FPAT 모듈을 찾을 수 없습니다.[/red]")
+        return False
+    
+    if not Path(policy_file).exists():
+        console.print(f"[red]❌ 정책 파일을 찾을 수 없습니다: {policy_file}[/red]")
+        return False
+    
+    config = Config()
+    
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            
+            # 파일 로딩
+            task1 = progress.add_task("정책 파일 로딩 중...", total=None)
+            df = pd.read_excel(policy_file)
+            progress.update(task1, description="✅ 정책 파일 로딩 완료")
+            
+            # Shadow 분석
+            task2 = progress.add_task("Shadow 정책 분석 중...", total=None)
+            analyzer = ShadowAnalyzer()
+            results = analyzer.analyze(df, vendor=vendor)
+            progress.update(task2, description="✅ Shadow 분석 완료")
+            
+            # 결과 저장
+            final_output_file = output_file or f"shadow_analysis_{vendor}.xlsx"
+            output_path = Path(config.get_output_dir()) / final_output_file
+            task3 = progress.add_task("결과 Excel 저장 중...", total=None)
+            
+            with pd.ExcelWriter(str(output_path), engine='openpyxl') as writer:
+                for sheet_name, data in results.items():
+                    if isinstance(data, pd.DataFrame):
+                        data.to_excel(writer, sheet_name=sheet_name, index=False)
+            
+            progress.update(task3, description="✅ 결과 저장 완료")
+        
+        # 결과 요약 표시
+        show_analysis_summary(results, output_path, "Shadow 분석")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Shadow 분석 중 오류 발생: {e}")
+        console.print(f"[red]❌ 오류: {e}[/red]")
+        return False
+
+
+def execute_policy_filter(policy_file: str, search_address: str, search_type: str = "both", 
+                         include_any: bool = True, output_file: Optional[str] = None):
+    """Interactive 모드용 정책 필터링 함수"""
+    
+    if not PolicyFilter:
+        console.print("[red]❌ FPAT 모듈을 찾을 수 없습니다.[/red]")
+        return False
+    
+    if not Path(policy_file).exists():
+        console.print(f"[red]❌ 정책 파일을 찾을 수 없습니다: {policy_file}[/red]")
+        return False
+    
+    valid_types = ["source", "destination", "both"]
+    if search_type not in valid_types:
+        console.print(f"[red]❌ 잘못된 검색 유형입니다. 사용 가능한 유형: {', '.join(valid_types)}[/red]")
+        return False
+    
+    config = Config()
+    
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            
+            # 파일 로딩
+            task1 = progress.add_task("정책 파일 로딩 중...", total=None)
+            df = pd.read_excel(policy_file)
+            progress.update(task1, description="✅ 정책 파일 로딩 완료")
+            
+            # 필터링
+            task2 = progress.add_task("정책 필터링 중...", total=None)
+            filter_obj = PolicyFilter()
+            
+            if search_type == "source":
+                filtered_df = filter_obj.filter_by_source(df, search_address, include_any)
+            elif search_type == "destination":
+                filtered_df = filter_obj.filter_by_destination(df, search_address, include_any)
+            else:  # both
+                filtered_df = filter_obj.filter_by_both(df, search_address, include_any)
+            
+            progress.update(task2, description="✅ 정책 필터링 완료")
+            
+            # 필터링 요약
+            summary = filter_obj.get_filter_summary(
+                original_df=df,
+                filtered_df=filtered_df,
+                search_criteria={
+                    'search_type': search_type,
+                    'address': search_address,
+                    'include_any': include_any
+                }
+            )
+            
+            # 결과 저장
+            if not output_file:
+                safe_address = search_address.replace('/', '_').replace('-', '_')
+                output_file = f"filtered_policies_{search_type}_{safe_address}.xlsx"
+            
+            output_path = Path(config.get_output_dir()) / output_file
+            task3 = progress.add_task("결과 Excel 저장 중...", total=None)
+            
+            with pd.ExcelWriter(str(output_path), engine='openpyxl') as writer:
+                filtered_df.to_excel(writer, sheet_name="filtered_policies", index=False)
+                
+                # 요약 정보도 저장
+                summary_df = pd.DataFrame([summary])
+                summary_df.to_excel(writer, sheet_name="summary", index=False)
+            
+            progress.update(task3, description="✅ 결과 저장 완료")
+        
+        # 결과 요약 표시
+        show_filter_summary(summary, output_path)
+        return True
+        
+    except Exception as e:
+        logger.error(f"정책 필터링 중 오류 발생: {e}")
+        console.print(f"[red]❌ 오류: {e}[/red]")
+        return False
