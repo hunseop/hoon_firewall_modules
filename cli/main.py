@@ -16,9 +16,24 @@ from .commands import firewall, policy_compare, analyzer, deletion
 from .utils.config import Config
 from .utils.logger import setup_logger
 from .utils.completion import setup_shell_completion
-from .utils.interactive import (
-    interactive_main_menu, show_success_message, show_error_message
-)
+
+# interactive 모듈은 조건부 import
+try:
+    from .utils.interactive import (
+        interactive_main_menu, show_success_message, show_error_message,
+        interactive_firewall_submenu, interactive_analyze_submenu, 
+        interactive_compare_submenu, interactive_firewall_add,
+        interactive_firewall_selector, interactive_vendor_selector,
+        interactive_file_selector, interactive_search_type_selector,
+        confirm_action, show_info_message
+    )
+    HAS_INTERACTIVE = True
+except ImportError:
+    HAS_INTERACTIVE = False
+    
+    # 대체 함수들
+    def show_error_message(message): console.print(f"[red]{message}[/red]")
+    def show_success_message(message): console.print(f"[green]{message}[/green]")
 
 # 콘솔 초기화
 console = Console()
@@ -96,6 +111,11 @@ def completion():
 @app.command()
 def interactive():
     """대화형 모드로 CLI를 실행합니다."""
+    if not HAS_INTERACTIVE:
+        console.print("[red]❌ 대화형 모드를 사용하려면 questionary 패키지가 필요합니다.[/red]")
+        console.print("[yellow]💡 설치: pip install questionary prompt-toolkit[/yellow]")
+        raise typer.Exit(1)
+    
     try:
         run_interactive_mode()
     except KeyboardInterrupt:
@@ -116,16 +136,12 @@ def run_interactive_mode():
             break
         
         if choice == "firewall":
-            from .commands.firewall import run_interactive_firewall
             run_interactive_firewall()
         elif choice == "compare":
-            from .commands.policy_compare import run_interactive_compare
             run_interactive_compare()
         elif choice == "analyze":
-            from .commands.analyzer import run_interactive_analyze
             run_interactive_analyze()
         elif choice == "deletion":
-            from .commands.deletion import run_interactive_deletion
             run_interactive_deletion()
         elif choice == "completion":
             instructions = setup_shell_completion()
@@ -142,9 +158,128 @@ def run_interactive_mode():
             console.print(version_panel)
         
         # 계속 진행할지 확인
-        from .utils.interactive import confirm_action
         if not confirm_action("계속 진행하시겠습니까?"):
             break
+
+
+def run_interactive_firewall():
+    """대화형 방화벽 기능"""
+    while True:
+        choice = interactive_firewall_submenu()
+        
+        if not choice or choice == "back":
+            break
+        
+        if choice == "add":
+            fw_data = interactive_firewall_add()
+            if fw_data:
+                try:
+                    config = Config()
+                    from .utils.config import FirewallConfig
+                    fw_config = FirewallConfig(**{k: v for k, v in fw_data.items() if k != "name"})
+                    config.add_firewall(fw_data["name"], fw_config)
+                    show_success_message(f"방화벽 '{fw_data['name']}'이 추가되었습니다!")
+                except Exception as e:
+                    show_error_message(f"방화벽 추가 중 오류: {e}")
+        
+        elif choice == "list":
+            config = Config()
+            firewalls = config.config.firewalls
+            if not firewalls:
+                show_info_message("저장된 방화벽이 없습니다.")
+            else:
+                table = Table(title="🛡️ 저장된 방화벽 목록", border_style="cyan")
+                table.add_column("이름", style="bold green")
+                table.add_column("호스트", style="cyan")
+                table.add_column("벤더", style="magenta")
+                
+                for name, fw_config in firewalls.items():
+                    table.add_row(name, fw_config.hostname, fw_config.vendor)
+                console.print(table)
+        
+        elif choice == "collect":
+            fw_name = interactive_firewall_selector()
+            if fw_name:
+                show_info_message(f"'{fw_name}' 방화벽에서 데이터를 수집합니다...")
+                # 실제 수집 로직은 기존 firewall.collect 함수 활용
+                show_info_message("데이터 수집 기능은 개발 중입니다.")
+
+
+def run_interactive_compare():
+    """대화형 비교 기능"""
+    while True:
+        choice = interactive_compare_submenu()
+        
+        if not choice or choice == "back":
+            break
+        
+        if choice == "policies":
+            old_file = interactive_file_selector("이전 정책 파일을 선택하세요")
+            if old_file:
+                new_file = interactive_file_selector("새로운 정책 파일을 선택하세요")
+                if new_file:
+                    show_info_message(f"정책 비교: {old_file} vs {new_file}")
+                    show_info_message("정책 비교 기능은 개발 중입니다.")
+        
+        elif choice == "objects":
+            old_file = interactive_file_selector("이전 객체 파일을 선택하세요")
+            if old_file:
+                new_file = interactive_file_selector("새로운 객체 파일을 선택하세요")
+                if new_file:
+                    show_info_message(f"객체 비교: {old_file} vs {new_file}")
+                    show_info_message("객체 비교 기능은 개발 중입니다.")
+        
+        elif choice == "full":
+            show_info_message("전체 비교 기능을 실행합니다...")
+            show_info_message("전체 비교 기능은 개발 중입니다.")
+
+
+def run_interactive_analyze():
+    """대화형 분석 기능"""
+    while True:
+        choice = interactive_analyze_submenu()
+        
+        if not choice or choice == "back":
+            break
+        
+        if choice == "redundancy":
+            policy_file = interactive_file_selector("분석할 정책 파일을 선택하세요")
+            if policy_file:
+                vendor = interactive_vendor_selector()
+                if vendor:
+                    show_info_message(f"중복성 분석: {policy_file} ({vendor})")
+                    show_info_message("중복성 분석 기능은 개발 중입니다.")
+        
+        elif choice == "shadow":
+            policy_file = interactive_file_selector("분석할 정책 파일을 선택하세요")
+            if policy_file:
+                vendor = interactive_vendor_selector()
+                if vendor:
+                    show_info_message(f"Shadow 분석: {policy_file} ({vendor})")
+                    show_info_message("Shadow 분석 기능은 개발 중입니다.")
+        
+        elif choice == "filter":
+            policy_file = interactive_file_selector("필터링할 정책 파일을 선택하세요")
+            if policy_file:
+                import questionary
+                address = questionary.text("검색할 IP 주소를 입력하세요:").ask()
+                if address:
+                    search_type = interactive_search_type_selector()
+                    if search_type:
+                        show_info_message(f"IP 필터링: {policy_file}, {address} ({search_type})")
+                        show_info_message("IP 필터링 기능은 개발 중입니다.")
+
+
+def run_interactive_deletion():
+    """대화형 삭제 영향도 분석"""
+    policy_file = interactive_file_selector("분석할 정책 파일을 선택하세요")
+    if policy_file:
+        import questionary
+        policies = questionary.text("삭제할 정책명들을 입력하세요 (쉼표로 구분):").ask()
+        if policies:
+            show_info_message(f"삭제 영향도 분석: {policy_file}")
+            show_info_message(f"대상 정책: {policies}")
+            show_info_message("삭제 영향도 분석 기능은 개발 중입니다.")
 
 
 def show_main_menu():
