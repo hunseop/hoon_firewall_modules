@@ -7,3 +7,9 @@ urllib3==1.26.12
 paramiko>=3.0.0
 scp>=0.14.0
 Flask>=3.0.0
+
+# CLI 앱 의존성
+click>=8.0.0
+rich>=13.0.0
+typer>=0.9.0
+pydantic>=2.0.0
