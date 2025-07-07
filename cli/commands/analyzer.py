@@ -3,7 +3,7 @@
 """
 
 import typer
-from typing import Optional
+from typing import Optional, Dict, Tuple
 from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
@@ -14,7 +14,7 @@ import pandas as pd
 try:
     from fpat.firewall_analyzer import (
         PolicyAnalyzer, RedundancyAnalyzer, ShadowAnalyzer, 
-        PolicyFilter, ChangeAnalyzer
+        PolicyFilter, ChangeAnalyzer, PolicyResolver
     )
 except ImportError:
     PolicyAnalyzer = None
@@ -22,6 +22,7 @@ except ImportError:
     ShadowAnalyzer = None
     PolicyFilter = None
     ChangeAnalyzer = None
+    PolicyResolver = None
 
 from ..utils.config import Config
 from ..utils.logger import setup_logger
@@ -35,6 +36,62 @@ app = typer.Typer(
     name="analyze",
     help="📊 정책 분석 명령어 (중복성, Shadow, 필터링 등)"
 )
+
+def load_and_resolve_policy(policy_file: Path, vendor: str) -> Tuple[pd.DataFrame, bool]:
+    """
+    정책 파일을 로드하고 객체 정보가 있다면 resolve합니다.
+    
+    Args:
+        policy_file: 정책 Excel 파일 경로
+        vendor: 방화벽 벤더
+        
+    Returns:
+        Tuple[pd.DataFrame, bool]: (resolved된 정책 DataFrame, resolve 성공 여부)
+    """
+    try:
+        # Excel 파일의 시트 목록 확인
+        xl = pd.ExcelFile(policy_file)
+        sheets = xl.sheet_names
+        
+        # 정책 데이터 로드
+        df = pd.read_excel(policy_file, sheet_name="policy")
+        
+        # 필요한 객체 시트가 모두 있는지 확인
+        required_sheets = {"address", "address_group", "service", "service_group"}
+        has_all_sheets = all(sheet in sheets for sheet in required_sheets)
+        
+        if has_all_sheets:
+            try:
+                # 객체 데이터 로드
+                network_objects = pd.read_excel(policy_file, sheet_name="address")
+                network_group_objects = pd.read_excel(policy_file, sheet_name="address_group")
+                service_objects = pd.read_excel(policy_file, sheet_name="service")
+                service_group_objects = pd.read_excel(policy_file, sheet_name="service_group")
+                
+                # PolicyResolver를 사용하여 객체 resolve
+                resolver = PolicyResolver()
+                resolved_df = resolver.resolve(
+                    rules_df=df,
+                    network_object_df=network_objects,
+                    network_group_object_df=network_group_objects,
+                    service_object_df=service_objects,
+                    service_group_object_df=service_group_objects
+                )
+                
+                console.print("[green]✅ 객체 정보를 성공적으로 resolve했습니다.[/green]")
+                return resolved_df, True
+                
+            except Exception as e:
+                logger.warning(f"객체 resolve 중 오류 발생: {e}")
+                console.print("[yellow]⚠️ 객체 resolve에 실패하여 객체명 기반으로 분석을 진행합니다.[/yellow]")
+                return df, False
+        else:
+            console.print("[yellow]⚠️ 일부 객체 정보가 없어 객체명 기반으로 분석을 진행합니다.[/yellow]")
+            return df, False
+            
+    except Exception as e:
+        logger.error(f"정책 파일 로드 중 오류 발생: {e}")
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -73,14 +130,24 @@ def redundancy(
             console=console
         ) as progress:
             
-            # 파일 로딩
+            # 파일 로딩 및 객체 resolve
             task1 = progress.add_task("정책 파일 로딩 중...", total=None)
-            df = pd.read_excel(policy_file)
+            df, is_resolved = load_and_resolve_policy(Path(policy_file), vendor)
             progress.update(task1, description="✅ 정책 파일 로딩 완료")
             
             # 중복성 분석
             task2 = progress.add_task("중복성 분석 중...", total=None)
             analyzer = RedundancyAnalyzer()
+            
+            # Resolved 컬럼이 있는 경우 해당 컬럼 사용
+            if is_resolved:
+                analyzer.extracted_columns[vendor] = [
+                    col.replace('Source', 'Extracted Source')
+                       .replace('Destination', 'Extracted Destination')
+                       .replace('Service', 'Extracted Service')
+                    for col in analyzer.vendor_columns[vendor]
+                ]
+            
             results = analyzer.analyze(df, vendor=vendor)
             progress.update(task2, description="✅ 중복성 분석 완료")
             
@@ -143,14 +210,24 @@ def shadow(
             console=console
         ) as progress:
             
-            # 파일 로딩
+            # 파일 로딩 및 객체 resolve
             task1 = progress.add_task("정책 파일 로딩 중...", total=None)
-            df = pd.read_excel(policy_file)
+            df, is_resolved = load_and_resolve_policy(Path(policy_file), vendor)
             progress.update(task1, description="✅ 정책 파일 로딩 완료")
             
             # Shadow 분석
             task2 = progress.add_task("Shadow 정책 분석 중...", total=None)
             analyzer = ShadowAnalyzer()
+            
+            # Resolved 컬럼이 있는 경우 해당 컬럼 사용
+            if is_resolved:
+                analyzer.vendor_columns[vendor] = [
+                    col.replace('Source', 'Extracted Source')
+                       .replace('Destination', 'Extracted Destination')
+                       .replace('Service', 'Extracted Service')
+                    for col in analyzer.vendor_columns[vendor]
+                ]
+            
             results = analyzer.analyze(df, vendor=vendor)
             progress.update(task2, description="✅ Shadow 분석 완료")
             
@@ -226,21 +303,24 @@ def filter(
             console=console
         ) as progress:
             
-            # 파일 로딩
+            # 파일 로딩 및 객체 resolve
             task1 = progress.add_task("정책 파일 로딩 중...", total=None)
-            df = pd.read_excel(policy_file)
+            df, is_resolved = load_and_resolve_policy(Path(policy_file), "paloalto")  # 벤더는 필터링에 영향 없음
             progress.update(task1, description="✅ 정책 파일 로딩 완료")
             
             # 필터링
             task2 = progress.add_task("정책 필터링 중...", total=None)
             filter_obj = PolicyFilter()
             
+            # Resolved 컬럼 사용 여부 설정
+            use_extracted = is_resolved
+            
             if search_type == "source":
-                filtered_df = filter_obj.filter_by_source(df, search_address, include_any)
+                filtered_df = filter_obj.filter_by_source(df, search_address, include_any, use_extracted)
             elif search_type == "destination":
-                filtered_df = filter_obj.filter_by_destination(df, search_address, include_any)
+                filtered_df = filter_obj.filter_by_destination(df, search_address, include_any, use_extracted)
             else:  # both
-                filtered_df = filter_obj.filter_by_both(df, search_address, include_any)
+                filtered_df = filter_obj.filter_by_both(df, search_address, include_any, use_extracted)
             
             progress.update(task2, description="✅ 정책 필터링 완료")
             
@@ -251,7 +331,8 @@ def filter(
                 search_criteria={
                     'search_type': search_type,
                     'address': search_address,
-                    'include_any': include_any
+                    'include_any': include_any,
+                    'use_extracted': use_extracted
                 }
             )
             

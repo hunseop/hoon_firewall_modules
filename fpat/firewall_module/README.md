@@ -30,12 +30,6 @@
 | SECUI MF2 | `mf2` | 정책, 객체, 그룹 |
 | Mock (테스트용) | `mock` | 모든 기능 (가상 데이터) |
 
-## 설치
-
-```bash
-pip install hoon-firewall-modules
-```
-
 ## 기본 사용법
 
 ### 1. 간단한 정책 추출
