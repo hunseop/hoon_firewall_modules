@@ -125,9 +125,20 @@ class RedundancyAnalyzer:
                 for name, group in grouped:
                     if 'Upper' in group['Type'].values and 'Lower' in group['Type'].values:
                         valid_no_groups.append(group)
+                
+                # valid_no_groups가 비어있을 때 빈 DataFrame 반환
+                if not valid_no_groups:
+                    return pd.DataFrame(columns=df.columns)
+                
                 return pd.concat(valid_no_groups).reset_index(drop=True)
 
             duplicated_results = ensure_upper_and_lower(results)
+            
+            # 중복 결과가 없는 경우 처리
+            if duplicated_results.empty:
+                self.logger.info("중복 정책이 발견되지 않았습니다.")
+                # 빈 DataFrame 반환 (기존 호환성 유지)
+                return pd.DataFrame(columns=['No', 'Type'] + list(df.columns))
             
             # No 재부여
             duplicated_results['No'] = duplicated_results.groupby('No').ngroup() + 1
