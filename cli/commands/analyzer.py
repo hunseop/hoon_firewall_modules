@@ -10,6 +10,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 import pandas as pd
+from datetime import datetime
 
 try:
     from fpat.firewall_analyzer import (
@@ -153,7 +154,8 @@ def redundancy(
             
             # 결과 저장
             if not output_file:
-                output_file = f"redundancy_analysis_{vendor}.xlsx"
+                today = datetime.now().strftime("%Y-%m-%d")
+                output_file = f"{today}_redundancy_analysis_{vendor}.xlsx"
             
             output_path = Path(config.get_output_dir()) / output_file
             task3 = progress.add_task("결과 Excel 저장 중...", total=None)
@@ -233,7 +235,8 @@ def shadow(
             
             # 결과 저장
             if not output_file:
-                output_file = f"shadow_analysis_{vendor}.xlsx"
+                today = datetime.now().strftime("%Y-%m-%d")
+                output_file = f"{today}_shadow_analysis_{vendor}.xlsx"
             
             output_path = Path(config.get_output_dir()) / output_file
             task3 = progress.add_task("결과 Excel 저장 중...", total=None)
@@ -338,8 +341,9 @@ def filter(
             
             # 결과 저장
             if not output_file:
+                today = datetime.now().strftime("%Y-%m-%d")
                 safe_address = search_address.replace('/', '_').replace('-', '_')
-                output_file = f"filtered_policies_{search_type}_{safe_address}.xlsx"
+                output_file = f"{today}_filtered_policies_{search_type}_{safe_address}.xlsx"
             
             output_path = Path(config.get_output_dir()) / output_file
             task3 = progress.add_task("결과 Excel 저장 중...", total=None)
@@ -370,22 +374,38 @@ def show_analysis_summary(results: dict, output_path: Path, analysis_type: str):
     table.add_column("카테고리", style="bold yellow")
     table.add_column("항목 수", style="green")
     
+    has_data = False
     for sheet_name, data in results.items():
         if isinstance(data, pd.DataFrame):
             table.add_row(sheet_name, str(len(data)))
+            if len(data) > 0:
+                has_data = True
         elif isinstance(data, (list, dict)):
             table.add_row(sheet_name, str(len(data)))
+            if len(data) > 0:
+                has_data = True
     
     console.print(table)
     
-    # 성공 메시지
-    success_panel = Panel(
-        f"[green]✅ {analysis_type}이 완료되었습니다![/green]\n\n"
-        f"[bold]저장 위치:[/bold] {output_path}",
-        title="🎉 분석 완료",
-        border_style="green"
-    )
-    console.print(success_panel)
+    # 분석 결과가 없는 경우 메시지 표시
+    if not has_data:
+        no_result_panel = Panel(
+            f"[yellow]ℹ️ {analysis_type} 결과가 없습니다.[/yellow]\n\n"
+            f"[bold]저장 위치:[/bold] {output_path}\n"
+            f"[dim]분석 조건에 맞는 정책이 발견되지 않았습니다.[/dim]",
+            title="📋 분석 결과",
+            border_style="yellow"
+        )
+        console.print(no_result_panel)
+    else:
+        # 성공 메시지
+        success_panel = Panel(
+            f"[green]✅ {analysis_type}이 완료되었습니다![/green]\n\n"
+            f"[bold]저장 위치:[/bold] {output_path}",
+            title="🎉 분석 완료",
+            border_style="green"
+        )
+        console.print(success_panel)
 
 
 def show_filter_summary(summary: dict, output_path: Path):
@@ -446,7 +466,11 @@ def execute_redundancy_analysis(policy_file: str, vendor: str = "paloalto", outp
             progress.update(task2, description="✅ 중복성 분석 완료")
             
             # 결과 저장
-            final_output_file = output_file or f"redundancy_analysis_{vendor}.xlsx"
+            if not output_file:
+                today = datetime.now().strftime("%Y-%m-%d")
+                final_output_file = f"{today}_redundancy_analysis_{vendor}.xlsx"
+            else:
+                final_output_file = output_file
             output_path = Path(config.get_output_dir()) / final_output_file
             task3 = progress.add_task("결과 Excel 저장 중...", total=None)
             
@@ -499,7 +523,11 @@ def execute_shadow_analysis(policy_file: str, vendor: str = "paloalto", output_f
             progress.update(task2, description="✅ Shadow 분석 완료")
             
             # 결과 저장
-            final_output_file = output_file or f"shadow_analysis_{vendor}.xlsx"
+            if not output_file:
+                today = datetime.now().strftime("%Y-%m-%d")
+                final_output_file = f"{today}_shadow_analysis_{vendor}.xlsx"
+            else:
+                final_output_file = output_file
             output_path = Path(config.get_output_dir()) / final_output_file
             task3 = progress.add_task("결과 Excel 저장 중...", total=None)
             
@@ -577,8 +605,9 @@ def execute_policy_filter(policy_file: str, search_address: str, search_type: st
             
             # 결과 저장
             if not output_file:
+                today = datetime.now().strftime("%Y-%m-%d")
                 safe_address = search_address.replace('/', '_').replace('-', '_')
-                output_file = f"filtered_policies_{search_type}_{safe_address}.xlsx"
+                output_file = f"{today}_filtered_policies_{search_type}_{safe_address}.xlsx"
             
             output_path = Path(config.get_output_dir()) / output_file
             task3 = progress.add_task("결과 Excel 저장 중...", total=None)

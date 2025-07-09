@@ -125,9 +125,28 @@ class RedundancyAnalyzer:
                 for name, group in grouped:
                     if 'Upper' in group['Type'].values and 'Lower' in group['Type'].values:
                         valid_no_groups.append(group)
+                
+                # valid_no_groups가 비어있을 때 빈 DataFrame 반환
+                if not valid_no_groups:
+                    return pd.DataFrame(columns=df.columns)
+                
                 return pd.concat(valid_no_groups).reset_index(drop=True)
 
             duplicated_results = ensure_upper_and_lower(results)
+            
+            # 중복 결과가 없는 경우 처리
+            if duplicated_results.empty:
+                self.logger.info("중복 정책이 발견되지 않았습니다.")
+                # 분석 결과가 없음을 나타내는 딕셔너리 반환
+                return {
+                    'redundancy_rules': pd.DataFrame(columns=['No', 'Type'] + list(df.columns)),
+                    'summary': pd.DataFrame([{
+                        'total_policies': len(df_filtered),
+                        'duplicate_policies': 0,
+                        'duplicate_groups': 0,
+                        'message': '중복 정책이 발견되지 않았습니다.'
+                    }])
+                }
             
             # No 재부여
             duplicated_results['No'] = duplicated_results.groupby('No').ngroup() + 1
@@ -140,7 +159,17 @@ class RedundancyAnalyzer:
             duplicated_results = duplicated_results.sort_values(by=['No', 'Type'], ascending=[True, False])
 
             self.logger.info("중복 정책 분석 완료")
-            return duplicated_results
+            
+            # 결과를 딕셔너리 형태로 반환
+            return {
+                'redundancy_rules': duplicated_results,
+                'summary': pd.DataFrame([{
+                    'total_policies': len(df_filtered),
+                    'duplicate_policies': len(duplicated_results),
+                    'duplicate_groups': duplicated_results['No'].nunique(),
+                    'message': f'{duplicated_results["No"].nunique()}개의 중복 그룹이 발견되었습니다.'
+                }])
+            }
             
         except Exception as e:
             self.logger.error(f"중복 정책 분석 중 오류 발생: {e}")
