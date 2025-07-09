@@ -19,7 +19,7 @@ class FirewallConfig(BaseModel):
 
 class CLIConfig(BaseModel):
     """CLI 설정"""
-    output_dir: str = "./outputs"
+    output_dir: str = "."  # 기본값을 현재 디렉터리로 변경
     log_level: str = "INFO"
     excel_format: str = "xlsx"
     firewalls: Dict[str, FirewallConfig] = {}
@@ -60,7 +60,11 @@ class Config:
     def get_output_dir(self) -> str:
         """출력 디렉토리를 반환합니다."""
         output_dir = self.config.output_dir
-        os.makedirs(output_dir, exist_ok=True)
+        
+        # 출력 디렉토리가 현재 디렉터리가 아닌 경우에만 생성
+        if output_dir != ".":
+            os.makedirs(output_dir, exist_ok=True)
+        
         return output_dir
     
     def add_firewall(self, name: str, config: FirewallConfig):
