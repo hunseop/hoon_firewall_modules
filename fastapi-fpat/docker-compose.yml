@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # FastAPI 애플리케이션
+  fpat-api:
+    build: .
+    container_name: fpat-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=true
+      - POSTGRES_SERVER=postgres
+      - POSTGRES_USER=fpat
+      - POSTGRES_PASSWORD=fpat123
+      - POSTGRES_DB=fpat_db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./fpat:/app/fpat  # FPAT 모듈 마운트
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    networks:
+      - fpat-network
+
+  # PostgreSQL 데이터베이스
+  postgres:
+    image: postgres:15-alpine
+    container_name: fpat-postgres
+    environment:
+      - POSTGRES_USER=fpat
+      - POSTGRES_PASSWORD=fpat123
+      - POSTGRES_DB=fpat_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - fpat-network
+
+  # Redis (Celery 브로커용)
+  redis:
+    image: redis:7-alpine
+    container_name: fpat-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - fpat-network
+
+  # Celery Worker (선택사항 - 별도 백그라운드 작업용)
+  celery-worker:
+    build: .
+    container_name: fpat-celery-worker
+    command: celery -A app.core.celery worker --loglevel=info
+    environment:
+      - DEBUG=true
+      - POSTGRES_SERVER=postgres
+      - POSTGRES_USER=fpat
+      - POSTGRES_PASSWORD=fpat123
+      - POSTGRES_DB=fpat_db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./fpat:/app/fpat
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    networks:
+      - fpat-network
+
+  # Nginx (선택사항 - 리버스 프록시)
+  nginx:
+    image: nginx:alpine
+    container_name: fpat-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./static:/var/www/static:ro
+    depends_on:
+      - fpat-api
+    restart: unless-stopped
+    networks:
+      - fpat-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  fpat-network:
+    driver: bridge
