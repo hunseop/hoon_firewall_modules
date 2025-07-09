@@ -165,18 +165,20 @@ python fpat_cli.py deletion analyze \
 
 ## 📁 출력 파일
 
-모든 결과는 Excel 파일로 저장되며, 기본 출력 디렉토리는 `./outputs`입니다.
+모든 결과는 Excel 파일로 저장되며, 기본 출력 디렉토리는 현재 디렉토리(`.`)입니다.
 
 ### 출력 디렉토리 변경
 설정 파일 `~/.fpat_config.json`을 편집하여 출력 디렉토리를 변경할 수 있습니다:
 
 ```json
 {
-  "output_dir": "/path/to/custom/output",
+  "output_dir": "./outputs",
   "log_level": "INFO",
   "excel_format": "xlsx"
 }
 ```
+
+위 설정을 사용하면 이전처럼 `outputs` 디렉토리에 결과가 저장됩니다.
 
 ## 🎨 고급 기능
 
