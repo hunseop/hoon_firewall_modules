@@ -161,14 +161,14 @@ def redundancy(
             task3 = progress.add_task("결과 Excel 저장 중...", total=None)
             
             with pd.ExcelWriter(str(output_path), engine='openpyxl') as writer:
-                for sheet_name, data in results.items():
-                    if isinstance(data, pd.DataFrame):
-                        data.to_excel(writer, sheet_name=sheet_name, index=False)
+                results.to_excel(writer, sheet_name="redundancy_rules", index=False)
             
             progress.update(task3, description="✅ 결과 저장 완료")
         
         # 결과 요약 표시
-        show_analysis_summary(results, output_path, "중복성 분석")
+        # results를 딕셔너리 형태로 변환하여 show_analysis_summary에 전달
+        results_dict = {"redundancy_rules": results}
+        show_analysis_summary(results_dict, output_path, "중복성 분석")
         
     except Exception as e:
         logger.error(f"중복성 분석 중 오류 발생: {e}")
@@ -475,14 +475,14 @@ def execute_redundancy_analysis(policy_file: str, vendor: str = "paloalto", outp
             task3 = progress.add_task("결과 Excel 저장 중...", total=None)
             
             with pd.ExcelWriter(str(output_path), engine='openpyxl') as writer:
-                for sheet_name, data in results.items():
-                    if isinstance(data, pd.DataFrame):
-                        data.to_excel(writer, sheet_name=sheet_name, index=False)
+                results.to_excel(writer, sheet_name="redundancy_rules", index=False)
             
             progress.update(task3, description="✅ 결과 저장 완료")
         
         # 결과 요약 표시
-        show_analysis_summary(results, output_path, "중복성 분석")
+        # results를 딕셔너리 형태로 변환하여 show_analysis_summary에 전달
+        results_dict = {"redundancy_rules": results}
+        show_analysis_summary(results_dict, output_path, "중복성 분석")
         return True
         
     except Exception as e:
